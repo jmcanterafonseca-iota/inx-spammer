@@ -19,9 +19,9 @@ import (
 	iotago "github.com/iotaledger/iota.go/v3"
 	builder "github.com/iotaledger/iota.go/v3/builder"
 
-	"github.com/gohornet/inx-spammer/pkg/common"
-	"github.com/gohornet/inx-spammer/pkg/daemon"
-	"github.com/gohornet/inx-spammer/pkg/pow"
+	"github.com/iotaledger/inx-spammer/pkg/common"
+	"github.com/iotaledger/inx-spammer/pkg/daemon"
+	"github.com/iotaledger/inx-spammer/pkg/pow"
 )
 
 type (
@@ -194,7 +194,7 @@ func (s *Spammer) doSpam(ctx context.Context) (time.Duration, time.Duration, err
 	}
 
 	timeStart = time.Now()
-	if _, err := pow.DoPoW(ctx, iotaBlock, s.protoParas.MinPoWScore, 1, 5*time.Second, func() (tips iotago.BlockIDs, err error) {
+	if _, err := pow.DoPoW(ctx, iotaBlock, float64(s.protoParas.MinPoWScore), 1, 5*time.Second, func() (tips iotago.BlockIDs, err error) {
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
 		_, refreshedTips, err := s.selectSpammerTips(ctx)
 		return refreshedTips, err

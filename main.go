@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/gohornet/inx-spammer/core/app"
+	"github.com/iotaledger/inx-spammer/core/app"
 )
 
 func main() {

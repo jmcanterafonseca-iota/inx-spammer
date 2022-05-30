@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/cpu"
 
-	"github.com/gohornet/inx-spammer/pkg/common"
 	"github.com/iotaledger/hive.go/syncutils"
+	"github.com/iotaledger/inx-spammer/pkg/common"
 )
 
 var (

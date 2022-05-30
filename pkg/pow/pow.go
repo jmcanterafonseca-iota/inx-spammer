@@ -7,9 +7,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/gohornet/inx-spammer/pkg/common"
 	"github.com/iotaledger/hive.go/contextutils"
 	"github.com/iotaledger/hive.go/serializer/v2"
+	"github.com/iotaledger/inx-spammer/pkg/common"
 	iotago "github.com/iotaledger/iota.go/v3"
 	"github.com/iotaledger/iota.go/v3/pow"
 )

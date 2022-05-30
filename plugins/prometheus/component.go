@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/dig"
 
-	"github.com/gohornet/inx-spammer/pkg/daemon"
-	"github.com/gohornet/inx-spammer/pkg/spammer"
 	"github.com/iotaledger/hive.go/app"
+	"github.com/iotaledger/inx-spammer/pkg/daemon"
+	"github.com/iotaledger/inx-spammer/pkg/spammer"
 )
 
 func init() {

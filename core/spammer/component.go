@@ -10,11 +10,11 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/dig"
 
-	"github.com/gohornet/inx-app/nodebridge"
-	"github.com/gohornet/inx-spammer/pkg/daemon"
-	"github.com/gohornet/inx-spammer/pkg/spammer"
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/timeutil"
+	"github.com/iotaledger/inx-app/nodebridge"
+	"github.com/iotaledger/inx-spammer/pkg/daemon"
+	"github.com/iotaledger/inx-spammer/pkg/spammer"
 )
 
 const (
