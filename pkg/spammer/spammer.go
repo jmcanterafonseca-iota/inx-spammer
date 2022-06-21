@@ -185,8 +185,9 @@ func (s *Spammer) doSpam(ctx context.Context) (time.Duration, time.Duration, err
 	messageString += fmt.Sprintf("\nTipselection: %v", durationGTTA.Truncate(time.Microsecond))
 
 	iotaBlock, err := builder.
-		NewBlockBuilder(s.protoParas.Version).
-		ParentsBlockIDs(tips).
+		NewBlockBuilder().
+		ProtocolVersion(s.protoParas.Version).
+		Parents(tips).
 		Payload(&iotago.TaggedData{Tag: tagBytes, Data: []byte(messageString)}).
 		Build()
 	if err != nil {
