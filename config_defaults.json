@@ -1,8 +1,6 @@
 {
   "app": {
     "checkForUpdates": true,
-    "disablePlugins": [],
-    "enablePlugins": ["Prometheus"],
     "stopGracePeriod": "5m"
   },
   "inx": {
@@ -14,16 +12,18 @@
     "tag": "HORNET Spammer",
     "tagSemiLazy": "HORNET Spammer Semi-Lazy",
     "cpuMaxUsage": 0.8,
-    "bpsRateLimit": 0.0,
+    "bpsRateLimit": 0,
     "workers": 0,
     "autostart": false,
     "nonLazyTipsThreshold": 0,
     "semiLazyTipsThreshold": 30
   },
   "profiling": {
+    "enabled": false,
     "bindAddress": "localhost:6060"
   },
   "prometheus": {
+    "enabled": false,
     "bindAddress": "localhost:9312",
     "spammerMetrics": true,
     "goMetrics": false,
