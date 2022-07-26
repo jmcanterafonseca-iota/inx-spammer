@@ -82,7 +82,7 @@ func provide(c *dig.Container) error {
 	if err := c.Provide(func(deps spammerDeps) *spammer.Spammer {
 		CoreComponent.LogInfo("Setting up spammer...")
 		return spammer.New(
-			deps.NodeBridge.NodeConfig.UnwrapProtocolParameters(),
+			deps.NodeBridge.ProtocolParameters,
 			ParamsSpammer.BPSRateLimit,
 			ParamsSpammer.CPUMaxUsage,
 			ParamsSpammer.Workers,

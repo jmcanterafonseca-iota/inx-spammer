@@ -28,6 +28,9 @@ type (
 	// IsNodeHealthyFunc returns whether the node is synced, has active peers and its latest milestone is not too old.
 	IsNodeHealthyFunc = func() (bool, error)
 
+	// IsNodeHealthyFunc returns the latest protocol parameters from the node.
+	ProtocolParametersFunc = func() *iotago.ProtocolParameters
+
 	// GetTipsPoolSizesFunc returns the current tip pool sizes of the node.
 	GetTipsPoolSizesFunc = func() (uint32, uint32)
 
@@ -44,22 +47,22 @@ type Spammer struct {
 	*logger.WrappedLogger
 	syncutils.RWMutex
 
-	protoParas            *iotago.ProtocolParameters
-	bpsRateLimit          float64
-	cpuMaxUsage           float64
-	workersCount          int
-	message               string
-	tag                   string
-	tagSemiLazy           string
-	nonLazyTipsThreshold  uint32
-	semiLazyTipsThreshold uint32
-	getTipsPoolSizesFunc  GetTipsPoolSizesFunc
-	requestTipsFunc       RequestTipsFunc
-	isNodeHealthyFunc     IsNodeHealthyFunc
-	sendBlockFunc         SendBlockFunc
-	spammerMetrics        *SpammerMetrics
-	cpuUsageUpdater       *CPUUsageUpdater
-	daemon                hivedaemon.Daemon
+	protocolParametersFunc ProtocolParametersFunc
+	bpsRateLimit           float64
+	cpuMaxUsage            float64
+	workersCount           int
+	message                string
+	tag                    string
+	tagSemiLazy            string
+	nonLazyTipsThreshold   uint32
+	semiLazyTipsThreshold  uint32
+	getTipsPoolSizesFunc   GetTipsPoolSizesFunc
+	requestTipsFunc        RequestTipsFunc
+	isNodeHealthyFunc      IsNodeHealthyFunc
+	sendBlockFunc          SendBlockFunc
+	spammerMetrics         *SpammerMetrics
+	cpuUsageUpdater        *CPUUsageUpdater
+	daemon                 hivedaemon.Daemon
 
 	spammerStartTime   time.Time
 	spammerAvgHeap     *timeheap.TimeHeap
@@ -78,7 +81,7 @@ type Spammer struct {
 
 // New creates a new spammer instance.
 func New(
-	protoParas *iotago.ProtocolParameters,
+	protocolParametersFunc ProtocolParametersFunc,
 	bpsRateLimit float64,
 	cpuMaxUsage float64,
 	workersCount int,
@@ -101,23 +104,23 @@ func New(
 	}
 
 	return &Spammer{
-		WrappedLogger:         logger.NewWrappedLogger(log),
-		protoParas:            protoParas,
-		bpsRateLimit:          bpsRateLimit,
-		cpuMaxUsage:           cpuMaxUsage,
-		workersCount:          workersCount,
-		message:               message,
-		tag:                   tag,
-		tagSemiLazy:           tagSemiLazy,
-		nonLazyTipsThreshold:  nonLazyTipsThreshold,
-		semiLazyTipsThreshold: semiLazyTipsThreshold,
-		getTipsPoolSizesFunc:  getTipsPoolSizesFunc,
-		requestTipsFunc:       requestTipsFunc,
-		isNodeHealthyFunc:     isNodeHealthyFunc,
-		sendBlockFunc:         sendBlockFunc,
-		spammerMetrics:        spammerMetrics,
-		cpuUsageUpdater:       cpuUsageUpdater,
-		daemon:                daemon,
+		WrappedLogger:          logger.NewWrappedLogger(log),
+		protocolParametersFunc: protocolParametersFunc,
+		bpsRateLimit:           bpsRateLimit,
+		cpuMaxUsage:            cpuMaxUsage,
+		workersCount:           workersCount,
+		message:                message,
+		tag:                    tag,
+		tagSemiLazy:            tagSemiLazy,
+		nonLazyTipsThreshold:   nonLazyTipsThreshold,
+		semiLazyTipsThreshold:  semiLazyTipsThreshold,
+		getTipsPoolSizesFunc:   getTipsPoolSizesFunc,
+		requestTipsFunc:        requestTipsFunc,
+		isNodeHealthyFunc:      isNodeHealthyFunc,
+		sendBlockFunc:          sendBlockFunc,
+		spammerMetrics:         spammerMetrics,
+		cpuUsageUpdater:        cpuUsageUpdater,
+		daemon:                 daemon,
 		// Events are the events of the spammer
 		Events: &SpammerEvents{
 			SpamPerformed:         events.NewEvent(SpamStatsCaller),
@@ -184,9 +187,11 @@ func (s *Spammer) doSpam(ctx context.Context) (time.Duration, time.Duration, err
 	messageString += fmt.Sprintf("\nTimestamp: %s", now.Format(time.RFC3339))
 	messageString += fmt.Sprintf("\nTipselection: %v", durationGTTA.Truncate(time.Microsecond))
 
+	protocolParams := s.protocolParametersFunc()
+
 	iotaBlock, err := builder.
 		NewBlockBuilder().
-		ProtocolVersion(s.protoParas.Version).
+		ProtocolVersion(protocolParams.Version).
 		Parents(tips).
 		Payload(&iotago.TaggedData{Tag: tagBytes, Data: []byte(messageString)}).
 		Build()
@@ -195,7 +200,7 @@ func (s *Spammer) doSpam(ctx context.Context) (time.Duration, time.Duration, err
 	}
 
 	timeStart = time.Now()
-	if _, err := pow.DoPoW(ctx, iotaBlock, float64(s.protoParas.MinPoWScore), 1, 5*time.Second, func() (tips iotago.BlockIDs, err error) {
+	if _, err := pow.DoPoW(ctx, iotaBlock, float64(protocolParams.MinPoWScore), 1, 5*time.Second, func() (tips iotago.BlockIDs, err error) {
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
 		_, refreshedTips, err := s.selectSpammerTips(ctx)
 		return refreshedTips, err
