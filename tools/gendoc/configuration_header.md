@@ -3,7 +3,7 @@ description: This section describes the configuration parameters and their types
 keywords:
 - IOTA Node
 - Hornet Node
-- Faucet
+- Spammer
 - Configuration
 - JSON
 - Customize

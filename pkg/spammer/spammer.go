@@ -16,12 +16,11 @@ import (
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/hive.go/math"
 	"github.com/iotaledger/hive.go/syncutils"
-	iotago "github.com/iotaledger/iota.go/v3"
-	builder "github.com/iotaledger/iota.go/v3/builder"
-
+	"github.com/iotaledger/inx-app/pow"
 	"github.com/iotaledger/inx-spammer/pkg/common"
 	"github.com/iotaledger/inx-spammer/pkg/daemon"
-	"github.com/iotaledger/inx-spammer/pkg/pow"
+	iotago "github.com/iotaledger/iota.go/v3"
+	builder "github.com/iotaledger/iota.go/v3/builder"
 )
 
 type (
