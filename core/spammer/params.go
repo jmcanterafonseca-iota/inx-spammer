@@ -28,6 +28,8 @@ type ParametersSpammer struct {
 	// SemiLazyTipsThreshold is the maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable).
 	// This is used to support the network if someone attacks the tangle by spamming a lot of tips.
 	SemiLazyTipsThreshold uint32 `default:"30" usage:"the maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable)"`
+	// DebugRequestLoggerEnabled defines whether the debug logging for requests should be enabled
+	DebugRequestLoggerEnabled bool `default:"false" usage:"whether the debug logging for requests should be enabled"`
 }
 
 var ParamsSpammer = &ParametersSpammer{}

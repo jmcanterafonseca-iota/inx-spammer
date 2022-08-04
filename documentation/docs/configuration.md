@@ -3,7 +3,7 @@ description: This section describes the configuration parameters and their types
 keywords:
 - IOTA Node
 - Hornet Node
-- Faucet
+- Spammer
 - Configuration
 - JSON
 - Customize
@@ -64,18 +64,19 @@ Example:
 
 ## <a id="spammer"></a> 3. Spammer
 
-| Name                  | Description                                                                                                 | Type    | Default value                  |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- | ------- | ------------------------------ |
-| bindAddress           | The bind address on which the Spammer HTTP server listens                                                   | string  | "localhost:9092"               |
-| message               | The message to embed within the spam blocks                                                                 | string  | "We are all made of stardust." |
-| tag                   | The tag of the block                                                                                        | string  | "HORNET Spammer"               |
-| tagSemiLazy           | The tag of the block if the semi-lazy pool is used (uses "tag" if empty)                                    | string  | "HORNET Spammer Semi-Lazy"     |
-| cpuMaxUsage           | Workers remains idle for a while when cpu usage gets over this limit (0 = disable)                          | float   | 0.8                            |
-| bpsRateLimit          | The blocks per second rate limit for the spammer (0 = no limit)                                             | float   | 0.0                            |
-| workers               | The amount of parallel running spammers                                                                     | int     | 0                              |
-| autostart             | Automatically start the spammer on startup                                                                  | boolean | false                          |
-| nonLazyTipsThreshold  | The maximum amount of tips in the non-lazy tip-pool before the spammer tries to reduce these (0 = always)   | uint    | 0                              |
-| semiLazyTipsThreshold | The maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable) | uint    | 30                             |
+| Name                      | Description                                                                                                 | Type    | Default value                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- | ------- | ------------------------------ |
+| bindAddress               | The bind address on which the Spammer HTTP server listens                                                   | string  | "localhost:9092"               |
+| message                   | The message to embed within the spam blocks                                                                 | string  | "We are all made of stardust." |
+| tag                       | The tag of the block                                                                                        | string  | "HORNET Spammer"               |
+| tagSemiLazy               | The tag of the block if the semi-lazy pool is used (uses "tag" if empty)                                    | string  | "HORNET Spammer Semi-Lazy"     |
+| cpuMaxUsage               | Workers remains idle for a while when cpu usage gets over this limit (0 = disable)                          | float   | 0.8                            |
+| bpsRateLimit              | The blocks per second rate limit for the spammer (0 = no limit)                                             | float   | 0.0                            |
+| workers                   | The amount of parallel running spammers                                                                     | int     | 0                              |
+| autostart                 | Automatically start the spammer on startup                                                                  | boolean | false                          |
+| nonLazyTipsThreshold      | The maximum amount of tips in the non-lazy tip-pool before the spammer tries to reduce these (0 = always)   | uint    | 0                              |
+| semiLazyTipsThreshold     | The maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable) | uint    | 30                             |
+| debugRequestLoggerEnabled | Whether the debug logging for requests should be enabled                                                    | boolean | false                          |
 
 Example:
 
@@ -91,7 +92,8 @@ Example:
       "workers": 0,
       "autostart": false,
       "nonLazyTipsThreshold": 0,
-      "semiLazyTipsThreshold": 30
+      "semiLazyTipsThreshold": 30,
+      "debugRequestLoggerEnabled": false
     }
   }
 ```

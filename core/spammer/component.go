@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 	"go.uber.org/dig"
 
 	"github.com/iotaledger/hive.go/app"
 	"github.com/iotaledger/hive.go/timeutil"
+	"github.com/iotaledger/inx-app/httpserver"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-spammer/pkg/daemon"
 	"github.com/iotaledger/inx-spammer/pkg/spammer"
@@ -149,13 +148,7 @@ func run() error {
 	if err := CoreComponent.Daemon().BackgroundWorker("API", func(ctx context.Context) {
 		CoreComponent.LogInfo("Starting API ... done")
 
-		e := newEcho()
-
-		apiErrorHandler := spammer.ErrorHandler()
-		e.HTTPErrorHandler = func(err error, c echo.Context) {
-			CoreComponent.LogDebugf("Error: %s", err)
-			apiErrorHandler(err, c)
-		}
+		e := httpserver.NewEcho(CoreComponent.Logger(), nil, ParamsSpammer.DebugRequestLoggerEnabled)
 
 		CoreComponent.LogInfo("Starting API server...")
 
@@ -190,11 +183,4 @@ func run() error {
 	}
 
 	return nil
-}
-
-func newEcho() *echo.Echo {
-	e := echo.New()
-	e.HideBanner = true
-	e.Use(middleware.Recover())
-	return e
 }
