@@ -1,7 +1,7 @@
 package spammer
 
 import (
-	"github.com/iotaledger/hive.go/events"
+	"github.com/iotaledger/hive.go/core/events"
 )
 
 // SpamStats are stats for a single spam block.

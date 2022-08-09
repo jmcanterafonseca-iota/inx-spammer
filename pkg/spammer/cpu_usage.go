@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shirou/gopsutil/cpu"
 
-	"github.com/iotaledger/hive.go/syncutils"
+	"github.com/iotaledger/hive.go/core/syncutils"
 	"github.com/iotaledger/inx-spammer/pkg/common"
 )
 

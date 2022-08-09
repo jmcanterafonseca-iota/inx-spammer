@@ -2,18 +2,27 @@ package spammer
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"go.uber.org/dig"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
-	"github.com/iotaledger/hive.go/app"
-	"github.com/iotaledger/hive.go/timeutil"
+	"github.com/iotaledger/hive.go/core/app"
+	"github.com/iotaledger/hive.go/core/app/core/shutdown"
+	"github.com/iotaledger/hive.go/core/timeutil"
 	"github.com/iotaledger/inx-app/httpserver"
 	"github.com/iotaledger/inx-app/nodebridge"
 	"github.com/iotaledger/inx-spammer/pkg/daemon"
+	"github.com/iotaledger/inx-spammer/pkg/hdwallet"
 	"github.com/iotaledger/inx-spammer/pkg/spammer"
+	inx "github.com/iotaledger/inx/go"
+	iotago "github.com/iotaledger/iota.go/v3"
 )
 
 const (
@@ -48,6 +57,7 @@ type dependencies struct {
 	NodeBridge      *nodebridge.NodeBridge
 	CPUUsageUpdater *spammer.CPUUsageUpdater
 	TipPoolListener *nodebridge.TipPoolListener
+	ShutdownHandler *shutdown.ShutdownHandler
 }
 
 func provide(c *dig.Container) error {
@@ -70,6 +80,22 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
+	fetchMetadata := func(blockID iotago.BlockID) (*spammer.Metadata, error) {
+		metadata, err := deps.NodeBridge.BlockMetadata(blockID)
+		if err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.NotFound {
+				return nil, nil
+			}
+			return nil, err
+		}
+		return &spammer.Metadata{
+			IsReferenced:   metadata.GetReferencedByMilestoneIndex() != 0,
+			IsConflicting:  metadata.GetConflictReason() != inx.BlockMetadata_CONFLICT_REASON_NONE,
+			ShouldReattach: metadata.GetShouldReattach(),
+		}, nil
+	}
+
 	type spammerDeps struct {
 		dig.In
 		SpammerMetrics  *spammer.SpammerMetrics
@@ -78,10 +104,30 @@ func provide(c *dig.Container) error {
 		TipPoolListener *nodebridge.TipPoolListener
 	}
 
-	if err := c.Provide(func(deps spammerDeps) *spammer.Spammer {
+	if err := c.Provide(func(deps spammerDeps) (*spammer.Spammer, error) {
 		CoreComponent.LogInfo("Setting up spammer...")
+
+		mnemonic, err := loadMnemonicFromEnvironment("SPAMMER_MNEMONIC")
+		if err != nil {
+			if ParamsSpammer.ValueSpamEnabled {
+				CoreComponent.LogPanicf("value spam enabled but loading mnemonic seed failed, err: %s", err)
+			}
+		}
+
+		var wallet *hdwallet.HDWallet
+		if len(mnemonic) > 0 {
+			// new HDWallet instance for address derivation
+			wallet, err = hdwallet.NewHDWallet(deps.NodeBridge.ProtocolParameters(), mnemonic, "", 0, false)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		return spammer.New(
 			deps.NodeBridge.ProtocolParameters,
+			deps.NodeBridge.INXNodeClient(),
+			wallet,
+			ParamsSpammer.ValueSpamEnabled,
 			ParamsSpammer.BPSRateLimit,
 			ParamsSpammer.CPUMaxUsage,
 			ParamsSpammer.Workers,
@@ -90,6 +136,7 @@ func provide(c *dig.Container) error {
 			ParamsSpammer.TagSemiLazy,
 			ParamsSpammer.NonLazyTipsThreshold,
 			ParamsSpammer.SemiLazyTipsThreshold,
+			ParamsPoW.RefreshTipsInterval,
 			deps.TipPoolListener.GetTipsPoolSizes,
 			deps.NodeBridge.RequestTips,
 			func() (bool, error) {
@@ -100,6 +147,7 @@ func provide(c *dig.Container) error {
 				return status.IsHealthy, nil
 			},
 			deps.NodeBridge.SubmitBlock,
+			fetchMetadata,
 			deps.SpammerMetrics,
 			deps.CPUUsageUpdater,
 			CoreComponent.Daemon(),
@@ -117,6 +165,28 @@ func configure() error {
 }
 
 func run() error {
+
+	// create a background worker that handles the ledger updates
+	CoreComponent.Daemon().BackgroundWorker("Spammer[LedgerUpdates]", func(ctx context.Context) {
+		if err := deps.NodeBridge.ListenToLedgerUpdates(ctx, 0, 0, func(update *nodebridge.LedgerUpdate) error {
+			createdOutputs := iotago.OutputIDs{}
+			for _, output := range update.Created {
+				createdOutputs = append(createdOutputs, output.GetOutputId().Unwrap())
+			}
+			consumedOutputs := iotago.OutputIDs{}
+			for _, spent := range update.Consumed {
+				consumedOutputs = append(consumedOutputs, spent.GetOutput().GetOutputId().Unwrap())
+			}
+
+			err := deps.Spammer.ApplyNewLedgerUpdate(ctx, update.MilestoneIndex, createdOutputs, consumedOutputs)
+			if err != nil {
+				deps.ShutdownHandler.SelfShutdown(fmt.Sprintf("Spammer plugin hit a critical error while applying new ledger update: %s", err.Error()), true)
+			}
+			return err
+		}); err != nil {
+			deps.ShutdownHandler.SelfShutdown(fmt.Sprintf("Listening to LedgerUpdates failed, error: %s", err), true)
+		}
+	}, daemon.PriorityStopSpammerLedgerUpdates)
 
 	// create a background worker that measures current CPU usage
 	if err := CoreComponent.Daemon().BackgroundWorker("CPU Usage Updater", func(ctx context.Context) {
@@ -141,7 +211,9 @@ func run() error {
 
 	// automatically start the spammer on startup if the flag is set
 	if ParamsSpammer.Autostart {
-		_ = deps.Spammer.Start(nil, nil, nil)
+		if err := deps.Spammer.Start(nil, nil, nil, nil); err != nil {
+			CoreComponent.LogPanicf("failed to autostart spammer: %s", err)
+		}
 	}
 
 	// create a background worker that handles the API
@@ -183,4 +255,20 @@ func run() error {
 	}
 
 	return nil
+}
+
+// loads Mnemonic phrases from the given environment variable.
+func loadMnemonicFromEnvironment(name string) ([]string, error) {
+	keys, exists := os.LookupEnv(name)
+	if !exists {
+		return nil, fmt.Errorf("environment variable '%s' not set", name)
+	}
+
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("environment variable '%s' not set", name)
+	}
+
+	phrases := strings.Split(keys, " ")
+
+	return phrases, nil
 }

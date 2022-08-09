@@ -11,13 +11,17 @@
     "message": "We are all made of stardust.",
     "tag": "HORNET Spammer",
     "tagSemiLazy": "HORNET Spammer Semi-Lazy",
-    "cpuMaxUsage": 0.8,
+    "valueSpamEnabled": false,
     "bpsRateLimit": 0,
+    "cpuMaxUsage": 0.8,
     "workers": 0,
     "autostart": false,
     "nonLazyTipsThreshold": 0,
     "semiLazyTipsThreshold": 30,
     "debugRequestLoggerEnabled": false
+  },
+  "pow": {
+    "refreshTipsInterval": "5s"
   },
   "profiling": {
     "enabled": false,

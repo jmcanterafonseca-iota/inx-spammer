@@ -4,30 +4,94 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
-	hivedaemon "github.com/iotaledger/hive.go/daemon"
-	"github.com/iotaledger/hive.go/datastructure/timeheap"
-	"github.com/iotaledger/hive.go/events"
-	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/hive.go/math"
-	"github.com/iotaledger/hive.go/syncutils"
+	hivedaemon "github.com/iotaledger/hive.go/core/daemon"
+	"github.com/iotaledger/hive.go/core/datastructure/timeheap"
+	"github.com/iotaledger/hive.go/core/events"
+	"github.com/iotaledger/hive.go/core/logger"
+	"github.com/iotaledger/hive.go/core/math"
+	"github.com/iotaledger/hive.go/core/syncutils"
 	"github.com/iotaledger/inx-app/pow"
 	"github.com/iotaledger/inx-spammer/pkg/common"
 	"github.com/iotaledger/inx-spammer/pkg/daemon"
+	"github.com/iotaledger/inx-spammer/pkg/hdwallet"
 	iotago "github.com/iotaledger/iota.go/v3"
 	builder "github.com/iotaledger/iota.go/v3/builder"
+	"github.com/iotaledger/iota.go/v3/nodeclient"
+)
+
+const (
+	AddressIndexSender   = 0
+	AddressIndexReceiver = 1
+)
+
+type outputState byte
+
+const (
+	// create basic output on sender address
+	stateBasicOutputCreate outputState = iota
+	// send basic output from sender address to receiver address
+	stateBasicOutputSend
+	// create alias output on sender address
+	stateAliasOutputCreate
+	// do an alias output state transition on sender address
+	stateAliasOutputStateTransition
+	// create a token foundry output on sender address
+	stateFoundryOutputCreate
+	// mint native tokens on sender address
+	stateFoundryOutputMintNativeTokens
+	// sent native tokens from sender address to receiver address
+	stateBasicOutputSendNativeTokens
+	// transition ownership of alias output from sender to receiver
+	stateAliasOutputGovernanceTransition
+	// melt native tokens on receiver address
+	stateFoundryOutputMeltNativeTokens
+	// destroy foundry output on receiver address
+	stateFoundryOutputDestroy
+	// destroy alias output on receiver address
+	stateAliasOutputDestroy
+	// create NFT output on sender address
+	stateNFTOutputCreate
+	// send NFT output from sender address to receiver address
+	stateNFTOutputSend
+	// destroy NFT output on receiver address
+	stateNFTOutputDestroy
+	// send basic output from receiver address to sender address
+	stateBasicOutputCollect
+)
+
+var (
+	outputStateNamesMap = map[outputState]string{
+		stateBasicOutputCreate:               "create basic output on sender address",
+		stateBasicOutputSend:                 "send basic output from sender address to receiver address",
+		stateAliasOutputCreate:               "create alias output on sender address",
+		stateAliasOutputStateTransition:      "do an alias output state transition on sender address",
+		stateFoundryOutputCreate:             "create a token foundry output on sender address",
+		stateFoundryOutputMintNativeTokens:   "mint native tokens on sender address",
+		stateBasicOutputSendNativeTokens:     "sent native tokens from sender address to receiver address",
+		stateAliasOutputGovernanceTransition: "transition ownership of alias output from sender to receiver",
+		stateFoundryOutputMeltNativeTokens:   "melt native tokens on receiver address",
+		stateFoundryOutputDestroy:            "destroy foundry output on receiver address",
+		stateAliasOutputDestroy:              "destroy alias output on receiver address",
+		stateNFTOutputCreate:                 "create NFT output on sender address",
+		stateNFTOutputSend:                   "send NFT output from sender address to receiver address",
+		stateNFTOutputDestroy:                "destroy NFT output on receiver address",
+		stateBasicOutputCollect:              "send basic output from receiver address to sender address",
+	}
 )
 
 type (
 	// IsNodeHealthyFunc returns whether the node is synced, has active peers and its latest milestone is not too old.
 	IsNodeHealthyFunc = func() (bool, error)
 
-	// IsNodeHealthyFunc returns the latest protocol parameters from the node.
+	// ProtocolParametersFunc returns the latest protocol parameters from the node.
 	ProtocolParametersFunc = func() *iotago.ProtocolParameters
 
 	// GetTipsPoolSizesFunc returns the current tip pool sizes of the node.
@@ -38,6 +102,24 @@ type (
 
 	// SendBlockFunc is a function which sends a block to the network.
 	SendBlockFunc = func(ctx context.Context, block *iotago.Block) (iotago.BlockID, error)
+
+	// BlockMetadataFunc is a function to fetch the required metadata for a given block ID.
+	// This should return nil if the block is not found.
+	BlockMetadataFunc = func(blockID iotago.BlockID) (*Metadata, error)
+
+	// pendingTransaction holds info about a sent transaction that is pending.
+	pendingTransaction struct {
+		BlockID        iotago.BlockID
+		TransactionID  iotago.TransactionID
+		ConsumedInputs iotago.OutputIDs
+	}
+
+	// Metadata contains the basic block metadata required by the spammer.
+	Metadata struct {
+		IsReferenced   bool
+		IsConflicting  bool
+		ShouldReattach bool
+	}
 )
 
 // Spammer is used to issue blocks to the IOTA network to create load on the tangle.
@@ -47,6 +129,8 @@ type Spammer struct {
 	syncutils.RWMutex
 
 	protocolParametersFunc ProtocolParametersFunc
+	nodeClient             *nodeclient.Client
+	valueSpamEnabled       bool
 	bpsRateLimit           float64
 	cpuMaxUsage            float64
 	workersCount           int
@@ -55,19 +139,29 @@ type Spammer struct {
 	tagSemiLazy            string
 	nonLazyTipsThreshold   uint32
 	semiLazyTipsThreshold  uint32
+	refreshTipsInterval    time.Duration
 	getTipsPoolSizesFunc   GetTipsPoolSizesFunc
 	requestTipsFunc        RequestTipsFunc
 	isNodeHealthyFunc      IsNodeHealthyFunc
 	sendBlockFunc          SendBlockFunc
+	blockMetadataFunc      BlockMetadataFunc
 	spammerMetrics         *SpammerMetrics
 	cpuUsageUpdater        *CPUUsageUpdater
 	daemon                 hivedaemon.Daemon
+
+	indexer nodeclient.IndexerClient
 
 	spammerStartTime   time.Time
 	spammerAvgHeap     *timeheap.TimeHeap
 	lastSentSpamBlocks uint32
 
+	accountSender   *LedgerAccount
+	accountReceiver *LedgerAccount
+
+	outputState outputState
+
 	isRunning           bool
+	isValueSpamEnabled  bool
 	bpsRateLimitRunning float64
 	cpuMaxUsageRunning  float64
 	workersCountRunning int
@@ -75,12 +169,21 @@ type Spammer struct {
 	processID        atomic.Uint32
 	spammerWaitGroup sync.WaitGroup
 
+	ledgerMilestoneIndex        atomic.Uint32
+	currentLedgerMilestoneIndex uint32
+
 	Events *SpammerEvents
+
+	// pendingTransactionsMap is a map of sent transactions that are pending.
+	pendingTransactionsMap map[iotago.BlockID]*pendingTransaction
 }
 
 // New creates a new spammer instance.
 func New(
 	protocolParametersFunc ProtocolParametersFunc,
+	nodeClient *nodeclient.Client,
+	wallet *hdwallet.HDWallet,
+	valueSpamEnabled bool,
 	bpsRateLimit float64,
 	cpuMaxUsage float64,
 	workersCount int,
@@ -89,22 +192,53 @@ func New(
 	tagSemiLazy string,
 	nonLazyTipsThreshold uint32,
 	semiLazyTipsThreshold uint32,
+	refreshTipsInterval time.Duration,
 	getTipsPoolSizesFunc GetTipsPoolSizesFunc,
 	requestTipsFunc RequestTipsFunc,
 	isNodeHealthyFunc IsNodeHealthyFunc,
 	sendBlockFunc SendBlockFunc,
+	blockMetadataFunc BlockMetadataFunc,
 	spammerMetrics *SpammerMetrics,
 	cpuUsageUpdater *CPUUsageUpdater,
 	daemon hivedaemon.Daemon,
-	log *logger.Logger) *Spammer {
+	log *logger.Logger) (*Spammer, error) {
 
 	if workersCount == 0 {
 		workersCount = runtime.NumCPU() - 1
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var err error
+	var accountSender, accountReceiver *LedgerAccount
+	var indexer nodeclient.IndexerClient
+	if wallet != nil {
+		// only create accounts if a wallet was provided
+		accountSender, err = NewLedgerAccount(wallet, AddressIndexSender, protocolParametersFunc)
+		if err != nil {
+			return nil, err
+		}
+
+		accountReceiver, err = NewLedgerAccount(wallet, AddressIndexReceiver, protocolParametersFunc)
+		if err != nil {
+			return nil, err
+		}
+
+		log.Infof("Address for Sender: %s", accountSender.AddressBech32())
+		log.Infof("Address for Receiver: %s", accountReceiver.AddressBech32())
+
+		indexer, err = nodeClient.Indexer(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Spammer{
 		WrappedLogger:          logger.NewWrappedLogger(log),
 		protocolParametersFunc: protocolParametersFunc,
+		nodeClient:             nodeClient,
+		valueSpamEnabled:       valueSpamEnabled,
 		bpsRateLimit:           bpsRateLimit,
 		cpuMaxUsage:            cpuMaxUsage,
 		workersCount:           workersCount,
@@ -113,128 +247,238 @@ func New(
 		tagSemiLazy:            tagSemiLazy,
 		nonLazyTipsThreshold:   nonLazyTipsThreshold,
 		semiLazyTipsThreshold:  semiLazyTipsThreshold,
+		refreshTipsInterval:    refreshTipsInterval,
 		getTipsPoolSizesFunc:   getTipsPoolSizesFunc,
 		requestTipsFunc:        requestTipsFunc,
 		isNodeHealthyFunc:      isNodeHealthyFunc,
 		sendBlockFunc:          sendBlockFunc,
+		blockMetadataFunc:      blockMetadataFunc,
 		spammerMetrics:         spammerMetrics,
 		cpuUsageUpdater:        cpuUsageUpdater,
 		daemon:                 daemon,
+		indexer:                indexer,
 		// Events are the events of the spammer
 		Events: &SpammerEvents{
 			SpamPerformed:         events.NewEvent(SpamStatsCaller),
 			AvgSpamMetricsUpdated: events.NewEvent(AvgSpamMetricsCaller),
 		},
-		spammerAvgHeap: timeheap.NewTimeHeap(),
-	}
+		spammerAvgHeap:         timeheap.NewTimeHeap(),
+		accountSender:          accountSender,
+		accountReceiver:        accountReceiver,
+		pendingTransactionsMap: make(map[iotago.BlockID]*pendingTransaction),
+		outputState:            stateBasicOutputCreate,
+	}, nil
 }
 
-func (s *Spammer) selectSpammerTips(ctx context.Context) (isSemiLazy bool, tips iotago.BlockIDs, err error) {
-	nonLazyPoolSize, semiLazyPoolSize := s.getTipsPoolSizesFunc()
+func (s *Spammer) selectSpammerTips(ctx context.Context, requiredTips iotago.BlockIDs) (isSemiLazy bool, tips iotago.BlockIDs, duration time.Duration, err error) {
+	ts := time.Now()
 
-	if s.semiLazyTipsThreshold != 0 && semiLazyPoolSize > s.semiLazyTipsThreshold {
-		// threshold was defined and reached, return semi-lazy tips for the spammer
-		tips, err = s.requestTipsFunc(ctx, 8, true)
+	tips = make(iotago.BlockIDs, 0)
+
+	// we only request as much tips as needed
+	tipCount := iotago.BlockMaxParents - uint32(len(requiredTips))
+
+	if tipCount > 0 {
+		nonLazyPoolSize, semiLazyPoolSize := s.getTipsPoolSizesFunc()
+
+		if s.semiLazyTipsThreshold != 0 && semiLazyPoolSize > s.semiLazyTipsThreshold {
+			// threshold was defined and reached, return semi-lazy tips for the spammer
+			tips, err = s.requestTipsFunc(ctx, tipCount, true)
+			if err != nil {
+				return false, nil, time.Duration(0), fmt.Errorf("couldn't select semi-lazy tips: %w", err)
+			}
+			tips = append(tips, requiredTips...)
+			tips = tips.RemoveDupsAndSort()
+
+			if len(tips) < 2 {
+				// do not spam if the amount of tips are less than 2 since that would not reduce the semi lazy count
+				return false, nil, time.Duration(0), fmt.Errorf("%w: semi lazy tips are equal", common.ErrNoTipsAvailable)
+			}
+
+			return true, tips, time.Since(ts), nil
+		}
+
+		if s.nonLazyTipsThreshold != 0 && nonLazyPoolSize < s.nonLazyTipsThreshold {
+			// if a threshold was defined and not reached, do not return tips for the spammer
+			return false, nil, time.Duration(0), fmt.Errorf("%w: non-lazy threshold not reached", common.ErrNoTipsAvailable)
+		}
+
+		tips, err = s.requestTipsFunc(ctx, tipCount, false)
 		if err != nil {
-			return false, nil, fmt.Errorf("couldn't select semi-lazy tips: %w", err)
+			return false, tips, time.Duration(0), fmt.Errorf("couldn't select non-lazy tips: %w", err)
 		}
-
-		if len(tips) < 2 {
-			// do not spam if the amount of tips are less than 2 since that would not reduce the semi lazy count
-			return false, nil, fmt.Errorf("%w: semi lazy tips are equal", common.ErrNoTipsAvailable)
-		}
-
-		return true, tips, nil
 	}
 
-	if s.nonLazyTipsThreshold != 0 && nonLazyPoolSize < s.nonLazyTipsThreshold {
-		// if a threshold was defined and not reached, do not return tips for the spammer
-		return false, nil, fmt.Errorf("%w: non-lazy threshold not reached", common.ErrNoTipsAvailable)
-	}
+	tips = append(tips, requiredTips...)
+	tips = tips.RemoveDupsAndSort()
 
-	tips, err = s.requestTipsFunc(ctx, 8, false)
-	if err != nil {
-		return false, tips, fmt.Errorf("couldn't select non-lazy tips: %w", err)
-	}
-	return false, tips, nil
+	return false, tips, time.Since(ts), nil
 }
 
-func (s *Spammer) doSpam(ctx context.Context) (time.Duration, time.Duration, error) {
+func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 
-	timeStart := time.Now()
-	isSemiLazy, tips, err := s.selectSpammerTips(ctx)
-	if err != nil {
-		return time.Duration(0), time.Duration(0), err
-	}
-	durationGTTA := time.Since(timeStart)
-
-	tag := s.tag
-	if isSemiLazy {
-		tag = s.tagSemiLazy
+	if currentProcessID != s.processID.Load() {
+		return nil
 	}
 
-	tagBytes := []byte(tag)
-	if len(tagBytes) > iotago.MaxTagLength {
-		tagBytes = tagBytes[:iotago.MaxTagLength]
+	if !s.isValueSpamEnabled {
+		return s.BuildTaggedDataBlockAndSend(ctx)
 	}
 
-	txCount := int(s.spammerMetrics.SentSpamBlocks.Load()) + 1
+	s.Lock()
+	defer s.Unlock()
 
-	now := time.Now()
-	messageString := s.message
-	messageString += fmt.Sprintf("\nCount: %06d", txCount)
-	messageString += fmt.Sprintf("\nTimestamp: %s", now.Format(time.RFC3339))
-	messageString += fmt.Sprintf("\nTipselection: %v", durationGTTA.Truncate(time.Microsecond))
-
-	protocolParams := s.protocolParametersFunc()
-
-	iotaBlock, err := builder.
-		NewBlockBuilder().
-		ProtocolVersion(protocolParams.Version).
-		Parents(tips).
-		Payload(&iotago.TaggedData{Tag: tagBytes, Data: []byte(messageString)}).
-		Build()
-	if err != nil {
-		return time.Duration(0), time.Duration(0), err
+	if s.currentLedgerMilestoneIndex != s.ledgerMilestoneIndex.Load() {
+		// stop spamming if the ledger milestone has changed
+		return nil
 	}
 
-	timeStart = time.Now()
-	if _, err := pow.DoPoW(ctx, iotaBlock, float64(protocolParams.MinPoWScore), 1, 5*time.Second, func() (tips iotago.BlockIDs, err error) {
-		// refresh tips of the spammer if PoW takes longer than a configured duration.
-		_, refreshedTips, err := s.selectSpammerTips(ctx)
-		return refreshedTips, err
-	}); err != nil {
-		return time.Duration(0), time.Duration(0), err
+	logDebugStateErrorFunc := func(state outputState, err error) {
+		s.LogDebugf("state: %d, %s failed: %s", state, outputStateNamesMap[s.outputState], err)
 	}
-	durationPOW := time.Since(timeStart)
 
-	if _, err := s.sendBlockFunc(ctx, iotaBlock); err != nil {
-		return time.Duration(0), time.Duration(0), err
+	if s.accountSender == nil || s.accountReceiver == nil {
+		logDebugStateErrorFunc(s.outputState, common.ErrMnemonicNotProvided)
+		return common.ErrMnemonicNotProvided
 	}
-	s.spammerMetrics.SentSpamBlocks.Inc()
 
-	return durationGTTA, durationPOW, nil
+	switch s.outputState {
+	case stateBasicOutputCreate:
+		if err := s.basicOutputSend(ctx, s.accountSender, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateBasicOutputSend
+
+	case stateBasicOutputSend:
+		if err := s.basicOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateAliasOutputCreate
+
+	case stateAliasOutputCreate:
+		if err := s.aliasOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateAliasOutputStateTransition
+
+	case stateAliasOutputStateTransition:
+		if err := s.aliasOutputStateTransition(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateFoundryOutputCreate
+
+	case stateFoundryOutputCreate:
+		if err := s.foundryOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateFoundryOutputMintNativeTokens
+
+	case stateFoundryOutputMintNativeTokens:
+		if err := s.foundryOutputMintNativeTokens(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateBasicOutputSendNativeTokens
+
+	case stateBasicOutputSendNativeTokens:
+		if err := s.basicOutputSendNativeTokens(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateAliasOutputGovernanceTransition
+
+	case stateAliasOutputGovernanceTransition:
+		if err := s.aliasOutputGovernanceTransition(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateFoundryOutputMeltNativeTokens
+
+	case stateFoundryOutputMeltNativeTokens:
+		if err := s.foundryOutputMeltNativeTokens(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateFoundryOutputDestroy
+
+	case stateFoundryOutputDestroy:
+		if err := s.foundryOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateAliasOutputDestroy
+
+	case stateAliasOutputDestroy:
+		if err := s.aliasOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateNFTOutputCreate
+
+	case stateNFTOutputCreate:
+		if err := s.nftOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateNFTOutputSend
+
+	case stateNFTOutputSend:
+		if err := s.nftOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateNFTOutputDestroy
+
+	case stateNFTOutputDestroy:
+		if err := s.nftOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateBasicOutputCollect
+
+	case stateBasicOutputCollect:
+		if err := s.basicOutputSend(ctx, s.accountReceiver, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+			logDebugStateErrorFunc(s.outputState, err)
+		}
+		s.outputState = stateBasicOutputCreate
+		s.LogDebug("spam cycle complete")
+	}
+
+	return nil
 }
 
-func (s *Spammer) startSpammerWorkers(bpsRateLimit float64, cpuMaxUsage float64, spammerWorkerCount int) {
+// addPendingTransactionWithoutLocking tracks a pending transaction.
+// write lock must be acquired outside.
+func (s *Spammer) addPendingTransactionWithoutLocking(pending *pendingTransaction) {
+	s.pendingTransactionsMap[pending.BlockID] = pending
+}
+
+// clearPendingTransactionWithoutLocking removes tracking of a pending transaction.
+// write lock must be acquired outside.
+func (s *Spammer) clearPendingTransactionWithoutLocking(blockID iotago.BlockID) {
+	delete(s.pendingTransactionsMap, blockID)
+}
+
+func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float64, cpuMaxUsage float64, spammerWorkerCount int) error {
+	s.isValueSpamEnabled = valueSpamEnabled
 	s.bpsRateLimitRunning = bpsRateLimit
 	s.cpuMaxUsageRunning = cpuMaxUsage
 	s.workersCountRunning = spammerWorkerCount
 	s.isRunning = true
 
+	if s.isValueSpamEnabled {
+		if s.accountSender == nil || s.accountReceiver == nil {
+			return common.ErrMnemonicNotProvided
+		}
+
+		// we only run one spammer worker for value spam in parallel,
+		// but we use "workersCountRunning" threads in parallel to do the PoW.
+		spammerWorkerCount = 1
+	}
+
 	var rateLimitChannel chan struct{} = nil
 	var rateLimitAbortSignal chan struct{} = nil
+	currentProcessID := s.processID.Load()
 
 	if bpsRateLimit != 0.0 {
 		rateLimitChannel = make(chan struct{}, spammerWorkerCount*2)
 		rateLimitAbortSignal = make(chan struct{})
 
-		// create a background worker that fills rateLimitChannel every second
-		if err := s.daemon.BackgroundWorker("Spammer rate limit channel", func(ctx context.Context) {
+		rateLimitWorkerFunc := func(ctx context.Context) {
 			s.spammerWaitGroup.Add(1)
 			defer s.spammerWaitGroup.Done()
 
-			currentProcessID := s.processID.Load()
 			interval := time.Duration(int64(float64(time.Second) / bpsRateLimit))
 			timeout := interval * 2
 			if timeout < time.Second {
@@ -242,7 +486,7 @@ func (s *Spammer) startSpammerWorkers(bpsRateLimit float64, cpuMaxUsage float64,
 			}
 
 			var lastDuration time.Duration
-		rateLimitLoop:
+
 			for {
 				timeStart := time.Now()
 
@@ -251,7 +495,7 @@ func (s *Spammer) startSpammerWorkers(bpsRateLimit float64, cpuMaxUsage float64,
 				if currentProcessID != s.processID.Load() {
 					close(rateLimitAbortSignal)
 					rateLimitCtxCancel()
-					break rateLimitLoop
+					return
 				}
 
 				// measure the last interval error and multiply by two to compensate (to reach target BPS)
@@ -266,7 +510,7 @@ func (s *Spammer) startSpammerWorkers(bpsRateLimit float64, cpuMaxUsage float64,
 					// received shutdown signal
 					close(rateLimitAbortSignal)
 					rateLimitCtxCancel()
-					break rateLimitLoop
+					return
 
 				case rateLimitChannel <- struct{}{}:
 					// wait until a worker is free
@@ -279,91 +523,102 @@ func (s *Spammer) startSpammerWorkers(bpsRateLimit float64, cpuMaxUsage float64,
 				rateLimitCtxCancel()
 				lastDuration = time.Since(timeStart)
 			}
+		}
 
+		// create a background worker that fills rateLimitChannel every second
+		if err := s.daemon.BackgroundWorker("Spammer rate limit channel", func(ctx context.Context) {
+			rateLimitWorkerFunc(ctx)
 		}, daemon.PriorityStopSpammer); err != nil {
 			s.LogPanicf("failed to start worker: %s", err)
 		}
 	}
 
+	spammerWorkerFunc := func(ctx context.Context, spammerCnt *atomic.Int32) {
+		s.spammerWaitGroup.Add(1)
+		defer s.spammerWaitGroup.Done()
+
+		spammerIndex := spammerCnt.Inc()
+
+		s.LogInfof("Starting Spammer %d... done", spammerIndex)
+
+	spammerLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				break spammerLoop
+
+			default:
+				if currentProcessID != s.processID.Load() {
+					break spammerLoop
+				}
+
+				if bpsRateLimit != 0 {
+					// if rateLimit is activated, wait until this spammer thread gets a signal
+					select {
+					case <-rateLimitAbortSignal:
+						break spammerLoop
+					case <-ctx.Done():
+						break spammerLoop
+					case <-rateLimitChannel:
+					}
+				}
+
+				isHealthy, err := s.isNodeHealthyFunc()
+				if err != nil {
+					s.LogWarn(err)
+					continue
+				}
+
+				if !isHealthy {
+					time.Sleep(time.Second)
+					continue
+				}
+
+				if err := s.cpuUsageUpdater.WaitForLowerCPUUsage(ctx, cpuMaxUsage); err != nil {
+					if !errors.Is(err, common.ErrOperationAborted) {
+						s.LogWarn(err)
+					}
+					continue
+				}
+
+				if s.spammerStartTime.IsZero() {
+					// set the start time for the metrics
+					s.spammerStartTime = time.Now()
+				}
+
+				// do spam
+				if err = s.doSpam(ctx, currentProcessID); err != nil {
+					continue
+				}
+			}
+		}
+
+		s.LogInfof("Stopping Spammer %d...", spammerIndex)
+		s.LogInfof("Stopping Spammer %d... done", spammerIndex)
+	}
+
 	spammerCnt := atomic.NewInt32(0)
 	for i := 0; i < spammerWorkerCount; i++ {
 		if err := s.daemon.BackgroundWorker(fmt.Sprintf("Spammer_%d", i), func(ctx context.Context) {
-			s.spammerWaitGroup.Add(1)
-			defer s.spammerWaitGroup.Done()
-
-			spammerIndex := spammerCnt.Inc()
-			currentProcessID := s.processID.Load()
-
-			s.LogInfof("Starting Spammer %d... done", spammerIndex)
-
-		spammerLoop:
-			for {
-				select {
-				case <-ctx.Done():
-					break spammerLoop
-
-				default:
-					if currentProcessID != s.processID.Load() {
-						break spammerLoop
-					}
-
-					if bpsRateLimit != 0 {
-						// if rateLimit is activated, wait until this spammer thread gets a signal
-						select {
-						case <-rateLimitAbortSignal:
-							break spammerLoop
-						case <-ctx.Done():
-							break spammerLoop
-						case <-rateLimitChannel:
-						}
-					}
-
-					isHealthy, err := s.isNodeHealthyFunc()
-					if err != nil {
-						s.LogWarn(err)
-						continue
-					}
-
-					if !isHealthy {
-						time.Sleep(time.Second)
-						continue
-					}
-
-					if err := s.cpuUsageUpdater.WaitForLowerCPUUsage(ctx, cpuMaxUsage); err != nil {
-						if !errors.Is(err, common.ErrOperationAborted) {
-							s.LogWarn(err)
-						}
-						continue
-					}
-
-					if s.spammerStartTime.IsZero() {
-						// set the start time for the metrics
-						s.spammerStartTime = time.Now()
-					}
-
-					durationGTTA, durationPOW, err := s.doSpam(ctx)
-					if err != nil {
-						continue
-					}
-					s.Events.SpamPerformed.Trigger(&SpamStats{Tipselection: float32(durationGTTA.Seconds()), ProofOfWork: float32(durationPOW.Seconds())})
-				}
-			}
-
-			s.LogInfof("Stopping Spammer %d...", spammerIndex)
-			s.LogInfof("Stopping Spammer %d... done", spammerIndex)
+			spammerWorkerFunc(ctx, spammerCnt)
 		}, daemon.PriorityStopSpammer); err != nil {
 			s.LogWarnf("failed to start worker: %s", err)
 		}
 	}
+
+	return nil
 }
 
-func (s *Spammer) stopWithoutLocking() {
+// ATTENTION: spammer lock should not be aquired when
+// calling this function because it might deadlock.
+func (s *Spammer) triggerStopSignalAndWait() {
 	// increase the process ID to stop all running workers
 	s.processID.Inc()
-
 	// wait until all spammers are stopped
 	s.spammerWaitGroup.Wait()
+}
 
+func (s *Spammer) resetSpammerStats() {
 	// reset the start time to stop the metrics
 	s.spammerStartTime = time.Time{}
 
@@ -375,6 +630,10 @@ func (s *Spammer) stopWithoutLocking() {
 
 func (s *Spammer) IsRunning() bool {
 	return s.isRunning
+}
+
+func (s *Spammer) IsValueSpamEnabled() bool {
+	return s.isValueSpamEnabled
 }
 
 func (s *Spammer) BPSRateLimitRunning() float64 {
@@ -390,15 +649,23 @@ func (s *Spammer) SpammerWorkersRunning() int {
 }
 
 // Start starts the spammer to spam with the given settings, otherwise it uses the settings from the config.
-func (s *Spammer) Start(bpsRateLimit *float64, cpuMaxUsage *float64, workersCount *int) error {
+func (s *Spammer) Start(valueSpamEnabled *bool, bpsRateLimit *float64, cpuMaxUsage *float64, workersCount *int) error {
+
+	s.triggerStopSignalAndWait()
+
 	s.Lock()
 	defer s.Unlock()
 
-	s.stopWithoutLocking()
+	s.resetSpammerStats()
 
+	valueSpamEnabledCfg := s.valueSpamEnabled
 	bpsRateLimitCfg := s.bpsRateLimit
 	cpuMaxUsageCfg := s.cpuMaxUsage
 	workersCountCfg := s.workersCount
+
+	if valueSpamEnabled != nil {
+		valueSpamEnabledCfg = *valueSpamEnabled
+	}
 
 	if bpsRateLimit != nil {
 		bpsRateLimitCfg = *bpsRateLimit
@@ -429,22 +696,28 @@ func (s *Spammer) Start(bpsRateLimit *float64, cpuMaxUsage *float64, workersCoun
 		workersCountCfg = 1
 	}
 
-	s.startSpammerWorkers(bpsRateLimitCfg, cpuMaxUsageCfg, workersCountCfg)
+	if err := s.getCurrentSpammerLedgerState(); err != nil {
+		return err
+	}
+
+	if err := s.startSpammerWorkers(valueSpamEnabledCfg, bpsRateLimitCfg, cpuMaxUsageCfg, workersCountCfg); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // Stop stops the spammer.
 func (s *Spammer) Stop() error {
+
+	s.triggerStopSignalAndWait()
+
 	s.Lock()
 	defer s.Unlock()
 
-	s.stopWithoutLocking()
+	s.resetSpammerStats()
 
 	s.isRunning = false
-	s.bpsRateLimitRunning = 0.0
-	s.cpuMaxUsageRunning = 0.0
-	s.workersCountRunning = 0
 
 	return nil
 }
@@ -473,4 +746,604 @@ func (s *Spammer) MeasureSpammerMetrics() {
 		NewBlocks:              newBlocks,
 		AverageBlocksPerSecond: s.spammerAvgHeap.AveragePerSecond(timeDiff),
 	})
+}
+
+// ApplyNewLedgerUpdate applies a new ledger update to the spammer.
+// If a conflict is found, the spammer ledger state is rebuild by querying the indexer.
+func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.MilestoneIndex, createdOutputs iotago.OutputIDs, consumedOutputs iotago.OutputIDs) error {
+
+	// set the atomic ledger milestone index to stop all ongoing spammers with the old ledger state
+	s.ledgerMilestoneIndex.Store(msIndex)
+
+	s.Lock()
+	defer s.Unlock()
+
+	if !s.isRunning {
+		// spammer is not running
+		return nil
+	}
+
+	// if we didn't provide accounts, we don't have to check for conflicts.
+	if s.accountSender == nil || s.accountReceiver == nil {
+		return nil
+	}
+
+	// create maps for faster lookup.
+	// outputs that are created and consumed in the same milestone exist in both maps.
+	newSpentsMap := make(map[iotago.OutputID]struct{})
+	for _, spent := range consumedOutputs {
+		newSpentsMap[spent] = struct{}{}
+	}
+
+	newOutputsMap := make(map[iotago.OutputID]struct{})
+	for _, output := range createdOutputs {
+		newOutputsMap[output] = struct{}{}
+	}
+
+	// check if pending transactions were affected by the ledger update.
+	for _, pendingTx := range s.pendingTransactionsMap {
+		// we never reuse an output, so we don't have to check for conflicts.
+		outputID := iotago.OutputIDFromTransactionIDAndIndex(pendingTx.TransactionID, 0)
+
+		if _, ok := newSpentsMap[outputID]; ok {
+			// the pending transaction was affected by the ledger update.
+			// remove the pending transaction from the pending transactions map.
+			s.clearPendingTransactionWithoutLocking(pendingTx.BlockID)
+			continue
+		}
+
+		if _, ok := newOutputsMap[outputID]; ok {
+			// the pending transaction was affected by the ledger update.
+			// remove the pending transaction from the pending transactions map.
+			s.clearPendingTransactionWithoutLocking(pendingTx.BlockID)
+			continue
+		}
+	}
+
+	s.accountSender.ClearSpentOutputs(newSpentsMap)
+	s.accountReceiver.ClearSpentOutputs(newSpentsMap)
+
+	conflicting := false
+	// it may happen that transactions that were created by the spammer are conflicting (e.g. block below max depth).
+	// if that happens, we need to recreate our local ledger state by querying the indexer, because
+	// we reuse the created outputs for further transactions, and all following transactions are conflicting as well.
+	checkPendingBlockMetadata := func(pendingTx *pendingTransaction) {
+		blockID := pendingTx.BlockID
+
+		metadata, err := s.blockMetadataFunc(blockID)
+		if err != nil {
+			// an error occurred
+			conflicting = true
+			return
+		}
+
+		if metadata == nil {
+			// block unknown
+			conflicting = true
+			return
+		}
+
+		if metadata.IsReferenced {
+			if metadata.IsConflicting {
+				// transaction was conflicting
+				conflicting = true
+				return
+			}
+			return
+		}
+
+		if metadata.ShouldReattach {
+			// below max depth
+			conflicting = true
+		}
+	}
+
+	// check all remaining pending transactions
+	for _, pendingTx := range s.pendingTransactionsMap {
+		if conflicting {
+			break
+		}
+		checkPendingBlockMetadata(pendingTx)
+	}
+
+	if conflicting {
+		// there was a conflict in the chain
+		// forget all known outputs
+		s.accountSender.ResetUTXOs()
+		s.accountReceiver.ResetUTXOs()
+
+		// recreate the pending transactions map
+		s.pendingTransactionsMap = make(map[iotago.BlockID]*pendingTransaction)
+
+		// wait until the indexer got updated
+		if err := s.waitForIndexerUpdate(ctx, msIndex); err != nil {
+			return err
+		}
+
+		// reset the state if there was a conflict
+		s.outputState = stateBasicOutputCreate
+	} else {
+		// we only allow the spammer to create new transactions if there was no conflict in the last milestone.
+		s.currentLedgerMilestoneIndex = s.ledgerMilestoneIndex.Load()
+	}
+
+	// it may happen that after applying all ledger changes, there are no known outputs left.
+	// this mostly happens after a conflict, because updating the local state after a conflict
+	// may return outputs that are confirmed in the next milestone,
+	// but there are no new outputs created by the spammer.
+	// in this case we query the indexer again to get the latest state.
+	if s.accountSender.Empty() && s.accountReceiver.Empty() && s.isValueSpamEnabled {
+		if err := s.getCurrentSpammerLedgerState(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// waitForIndexerUpdate waits until the indexer got updated to the expected milestone index.
+func (s *Spammer) waitForIndexerUpdate(ctx context.Context, msIndex iotago.MilestoneIndex) error {
+
+	if s.indexer == nil {
+		return nodeclient.ErrIndexerPluginNotAvailable
+	}
+
+	ctxWaitForUpdate, cancelWaitForUpdate := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelWaitForUpdate()
+
+	for ctxWaitForUpdate.Err() == nil {
+
+		// we create a dummy call to check for the ledger index in the result
+		result, err := s.indexer.Outputs(ctx, &nodeclient.BasicOutputsQuery{
+			IndexerCursorParas: nodeclient.IndexerCursorParas{
+				PageSize: 1,
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		for result.Next() {
+			if result.Response.LedgerIndex >= msIndex {
+				return nil
+			}
+		}
+
+		// short sleep time to reduce load on the indexer
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return ctxWaitForUpdate.Err()
+}
+
+func (s *Spammer) getCurrentSpammerLedgerState() error {
+
+	if s.accountSender == nil || s.accountReceiver == nil {
+		return nil
+	}
+
+	if s.indexer == nil {
+		return nodeclient.ErrIndexerPluginNotAvailable
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// get all known outputs from the indexer (sender)
+	if err := s.accountSender.QueryOutputsFromIndexer(ctx, s.indexer); err != nil {
+		return err
+	}
+
+	// get all known outputs from the indexer (receiver)
+	if err := s.accountReceiver.QueryOutputsFromIndexer(ctx, s.indexer); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Spammer) composeTaggedData(isSemiLazy bool, timeGTTA time.Duration, additionalTag ...string) *iotago.TaggedData {
+	// prepare tagged data
+	tag := s.tag
+	if isSemiLazy {
+		tag = s.tagSemiLazy
+	}
+
+	tagBytes := []byte(tag)
+	if len(tagBytes) > iotago.MaxTagLength {
+		tagBytes = tagBytes[:iotago.MaxTagLength]
+	}
+
+	txCount := int(s.spammerMetrics.SentSpamBlocks.Load()) + 1
+	messageString := s.message
+	messageString += fmt.Sprintf("\nCount: %06d", txCount)
+	messageString += fmt.Sprintf("\nTimestamp: %s", time.Now().Format(time.RFC3339))
+	messageString += fmt.Sprintf("\nTipselection: %v", timeGTTA.Truncate(time.Microsecond))
+	if len(additionalTag) > 0 {
+		messageString += fmt.Sprintf("\n%s", strings.Join(additionalTag, "\n"))
+	}
+
+	return &iotago.TaggedData{Tag: tagBytes, Data: []byte(messageString)}
+}
+
+func addBalanceToOutput(output iotago.Output, balance uint64) error {
+
+	switch output.Type() {
+	case iotago.OutputBasic:
+		o := output.(*iotago.BasicOutput)
+		o.Amount += balance
+	case iotago.OutputAlias:
+		o := output.(*iotago.AliasOutput)
+		o.Amount += balance
+	case iotago.OutputFoundry:
+		o := output.(*iotago.FoundryOutput)
+		o.Amount += balance
+	case iotago.OutputNFT:
+		o := output.(*iotago.NFTOutput)
+		o.Amount += balance
+	default:
+		return fmt.Errorf("%w: type %d", iotago.ErrUnknownOutputType, output.Type())
+	}
+
+	return nil
+}
+
+func setMinimumBalanceOfOutput(protocolParams *iotago.ProtocolParameters, output iotago.Output) error {
+
+	minAmount := protocolParams.RentStructure.MinRent(output)
+
+	switch output.Type() {
+	case iotago.OutputBasic:
+		o := output.(*iotago.BasicOutput)
+		if o.Amount < minAmount {
+			o.Amount = minAmount
+		}
+	case iotago.OutputAlias:
+		o := output.(*iotago.AliasOutput)
+		if o.Amount < minAmount {
+			o.Amount = minAmount
+		}
+	case iotago.OutputFoundry:
+		o := output.(*iotago.FoundryOutput)
+		if o.Amount < minAmount {
+			o.Amount = minAmount
+		}
+	case iotago.OutputNFT:
+		o := output.(*iotago.NFTOutput)
+		if o.Amount < minAmount {
+			o.Amount = minAmount
+		}
+	default:
+		return fmt.Errorf("%w: type %d", iotago.ErrUnknownOutputType, output.Type())
+	}
+
+	return nil
+}
+
+func (s *Spammer) BuildTaggedDataBlockAndSend(ctx context.Context) error {
+
+	protocolParams := s.protocolParametersFunc()
+
+	// select tips
+	isSemiLazy, tips, durationGTTA, err := s.selectSpammerTips(ctx, iotago.BlockIDs{})
+	if err != nil {
+		return err
+	}
+
+	// build a block with tagged data payload
+	block, err := builder.
+		NewBlockBuilder().
+		ProtocolVersion(protocolParams.Version).
+		Parents(tips).
+		Payload(s.composeTaggedData(isSemiLazy, durationGTTA)).
+		Build()
+	if err != nil {
+		return fmt.Errorf("build block failed, error: %w", err)
+	}
+
+	timeStart := time.Now()
+	// we only use 1 thread to do the PoW for tagged data spam blocks, because several threads run in parallel
+	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), 1, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
+		// refresh tips of the spammer if PoW takes longer than a configured duration.
+		_, refreshedTips, _, err := s.selectSpammerTips(ctx, iotago.BlockIDs{})
+		return refreshedTips, err
+	}); err != nil {
+		return err
+	}
+	durationPoW := time.Since(timeStart)
+
+	if _, err := s.sendBlockFunc(ctx, block); err != nil {
+		return fmt.Errorf("send data block failed, error: %w", err)
+	}
+
+	s.spammerMetrics.SentSpamBlocks.Inc()
+	s.Events.SpamPerformed.Trigger(&SpamStats{Tipselection: float32(durationGTTA.Seconds()), ProofOfWork: float32(durationPoW.Seconds())})
+
+	return nil
+}
+
+func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamBuilder *SpamBuilder) ([]UTXOInterface, *UTXO, error) {
+
+	if len(spamBuilder.consumedInputs) < 1 {
+		return nil, nil, common.ErrNoUTXOAvailable
+	}
+
+	protocolParams := s.protocolParametersFunc()
+
+	// select tips
+	isSemiLazy, tips, durationGTTA, err := s.selectSpammerTips(ctx, spamBuilder.requiredTips)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create a new transaction builder for the correct network
+	txBuilder := builder.NewTransactionBuilder(protocolParams.NetworkID())
+
+	// add tagged data payload
+	txBuilder.AddTaggedDataPayload(s.composeTaggedData(isSemiLazy, durationGTTA, spamBuilder.additionalTag...))
+
+	senderAddress := spamBuilder.accountSender.Address()
+
+	// add all inputs
+	var remainder int64 = 0
+	consumedInputIDs := iotago.OutputIDs{}
+	for _, input := range spamBuilder.consumedInputs {
+		remainder += int64(input.Output().Deposit())
+
+		var unlockAddress iotago.Address
+
+		switch input.Output().Type() {
+		case iotago.OutputBasic:
+			o := input.Output().(*iotago.BasicOutput)
+
+			addrUnlockCondition := o.UnlockConditionSet().Address()
+			if addrUnlockCondition == nil {
+				return nil, nil, fmt.Errorf("unlock condition is not an address")
+			}
+
+			if !addrUnlockCondition.Address.Equal(senderAddress) {
+				return nil, nil, fmt.Errorf("unlock address of input does not match sender address: %s != %s", addrUnlockCondition.Address.Bech32(protocolParams.Bech32HRP), senderAddress.Bech32(protocolParams.Bech32HRP))
+			}
+
+			unlockAddress = addrUnlockCondition.Address
+
+		case iotago.OutputAlias:
+			o := input.Output().(*iotago.AliasOutput)
+
+			addrUnlockCondition := o.UnlockConditionSet().StateControllerAddress()
+			if addrUnlockCondition == nil {
+				return nil, nil, fmt.Errorf("unlock condition is not a state controller address")
+			}
+
+			if !addrUnlockCondition.Address.Equal(senderAddress) {
+				return nil, nil, fmt.Errorf("unlock state controller address of input does not match sender address: %s != %s", addrUnlockCondition.Address.Bech32(protocolParams.Bech32HRP), senderAddress.Bech32(protocolParams.Bech32HRP))
+			}
+
+			unlockAddress = addrUnlockCondition.Address
+
+		case iotago.OutputFoundry:
+			o := input.Output().(*iotago.FoundryOutput)
+
+			addrUnlockCondition := o.UnlockConditionSet().ImmutableAlias()
+			if addrUnlockCondition == nil {
+				return nil, nil, fmt.Errorf("unlock condition is not an immutable alias address")
+			}
+
+			unlockAddress = addrUnlockCondition.Address
+
+		case iotago.OutputNFT:
+			o := input.Output().(*iotago.NFTOutput)
+
+			addrUnlockCondition := o.UnlockConditionSet().Address()
+			if addrUnlockCondition == nil {
+				return nil, nil, fmt.Errorf("unlock condition is not an address")
+			}
+
+			if !addrUnlockCondition.Address.Equal(senderAddress) {
+				return nil, nil, fmt.Errorf("unlock address of input does not match sender address: %s != %s", addrUnlockCondition.Address.Bech32(protocolParams.Bech32HRP), senderAddress.Bech32(protocolParams.Bech32HRP))
+			}
+
+			unlockAddress = addrUnlockCondition.Address
+
+		default:
+			return nil, nil, fmt.Errorf("%w: type %d", iotago.ErrUnknownOutputType, input.Output().Type())
+		}
+
+		txBuilder.AddInput(&builder.TxInput{
+			UnlockTarget: unlockAddress,
+			InputID:      input.OutputID(),
+			Input:        input.Output(),
+		})
+		consumedInputIDs = append(consumedInputIDs, input.OutputID())
+	}
+
+	// create a remainder output
+	// if the balance for the remainder output is not sufficient, the remainder output is not used.
+	basicOuputRemainder := &iotago.BasicOutput{
+		Conditions: iotago.UnlockConditions{
+			&iotago.AddressUnlockCondition{Address: senderAddress},
+		},
+	}
+
+	if err := setMinimumBalanceOfOutput(protocolParams, basicOuputRemainder); err != nil {
+		return nil, nil, err
+	}
+
+	// add all outputs and calculate the remainder
+	var remainderOutputIndex uint16 = 0
+	for i, outputWithOwnership := range spamBuilder.createdOutputs {
+		output := outputWithOwnership.Output
+
+		if err := setMinimumBalanceOfOutput(protocolParams, output); err != nil {
+			return nil, nil, err
+		}
+
+		remainder -= int64(output.Deposit())
+
+		if i == len(spamBuilder.createdOutputs)-1 {
+			// last output
+			// we need to check if there is a remainder and if the remainder has sufficient balance for the storage deposit
+			// otherwise we add the remainder balance to the last output
+
+			if remainder == 0 {
+				// if there is no remainder, we do not add a remainder output
+				basicOuputRemainder = nil
+			}
+
+			if remainder > 0 {
+				if uint64(remainder) >= basicOuputRemainder.Amount {
+					// remainder balance is sufficient to fund the storage deposit for the remainder output
+					basicOuputRemainder.Amount = uint64(remainder)
+				} else {
+					// remainder balance is not sufficient to fund the storage deposit for the remainder output
+					// add the remainder balance to the current output
+					basicOuputRemainder = nil
+					if err := addBalanceToOutput(output, uint64(remainder)); err != nil {
+						return nil, nil, err
+					}
+				}
+				remainder = 0
+			}
+		}
+
+		txBuilder.AddOutput(output)
+		remainderOutputIndex++
+	}
+
+	if remainder < 0 {
+		return nil, nil, fmt.Errorf("%w: %d", common.ErrNotEnoughBalanceAvailable, remainder)
+	}
+
+	// in case no output was given, we need to set the remainder
+	if remainder > 0 {
+		basicOuputRemainder.Amount = uint64(remainder)
+	}
+
+	// add the remainder output if it is needed
+	if basicOuputRemainder != nil {
+		txBuilder.AddOutput(basicOuputRemainder)
+	}
+
+	// build the transaction payload
+	txPayload, err := txBuilder.Build(protocolParams, spamBuilder.accountSender.Signer())
+	if err != nil {
+		return nil, nil, fmt.Errorf("build tx payload failed, error: %w", err)
+	}
+
+	// build a block with transaction payload
+	block, err := builder.
+		NewBlockBuilder().
+		ProtocolVersion(protocolParams.Version).
+		Parents(tips).
+		Payload(txPayload).
+		Build()
+	if err != nil {
+		return nil, nil, fmt.Errorf("build block failed, error: %w", err)
+	}
+
+	timeStart := time.Now()
+	// we only use "workersCount" threads in parallel to do the PoW for transaction spam blocks, because only one spammer thread runs in parallel.
+	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), s.workersCountRunning, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
+		// refresh tips of the spammer if PoW takes longer than a configured duration.
+		_, refreshedTips, _, err := s.selectSpammerTips(ctx, spamBuilder.requiredTips)
+		return refreshedTips, err
+	}); err != nil {
+		return nil, nil, err
+	}
+	durationPoW := time.Since(timeStart)
+
+	blockID, err := s.sendBlockFunc(ctx, block)
+	if err != nil {
+		return nil, nil, fmt.Errorf("send transaction block failed, error: %w", err)
+	}
+
+	s.spammerMetrics.SentSpamBlocks.Inc()
+	s.Events.SpamPerformed.Trigger(&SpamStats{Tipselection: float32(durationGTTA.Seconds()), ProofOfWork: float32(durationPoW.Seconds())})
+
+	transactionID, err := txPayload.ID()
+	if err != nil {
+		return nil, nil, fmt.Errorf("computing transactionID failed, error: %w", err)
+	}
+
+	s.addPendingTransactionWithoutLocking(&pendingTransaction{
+		BlockID:        blockID,
+		TransactionID:  transactionID,
+		ConsumedInputs: consumedInputIDs,
+	})
+
+	createdOutputs := make([]UTXOInterface, 0)
+
+	var outputIndex uint16 = 0
+	for _, outputWithOwnership := range spamBuilder.createdOutputs {
+		output := outputWithOwnership.Output
+		if output.Type() == iotago.OutputAlias {
+			createdOutputs = append(createdOutputs, NewAliasUTXO(
+				iotago.OutputIDFromTransactionIDAndIndex(transactionID, outputIndex),
+				output,
+				blockID,
+				outputWithOwnership.OwnedOutputs,
+			))
+		} else {
+			createdOutputs = append(createdOutputs, NewUTXO(
+				iotago.OutputIDFromTransactionIDAndIndex(transactionID, outputIndex),
+				output,
+				blockID,
+			))
+		}
+
+		outputIndex++
+	}
+
+	if basicOuputRemainder == nil {
+		return createdOutputs, nil, nil
+	}
+
+	return createdOutputs, NewUTXO(
+		iotago.OutputIDFromTransactionIDAndIndex(transactionID, remainderOutputIndex),
+		basicOuputRemainder,
+		blockID,
+	), nil
+}
+
+func (s *Spammer) bookCreatedOutputs(createdOutputs []UTXOInterface, basicOutputsAccount *LedgerAccount, aliasOutputsAccount *LedgerAccount, nftOutputsAccount *LedgerAccount) error {
+
+	sort.Slice(createdOutputs, func(i, j int) bool {
+		return createdOutputs[i].Output().Type() < createdOutputs[j].Output().Type()
+	})
+
+	for _, output := range createdOutputs {
+
+		switch output.Output().Type() {
+		case iotago.OutputBasic:
+			if basicOutputsAccount == nil {
+				return fmt.Errorf("basic output account is nil")
+			}
+			basicOutputsAccount.AppendBasicOutput(output.(*UTXO))
+
+		case iotago.OutputAlias:
+			if aliasOutputsAccount == nil {
+				return fmt.Errorf("alias output account is nil")
+			}
+			aliasOutputsAccount.AppendAliasOutput(output.(*AliasUTXO))
+
+		case iotago.OutputFoundry:
+			if aliasOutputsAccount == nil {
+				return fmt.Errorf("alias output account is nil")
+			}
+			if err := aliasOutputsAccount.AppendFoundryOutput(output.(*UTXO)); err != nil {
+				return err
+			}
+
+		case iotago.OutputNFT:
+			if nftOutputsAccount == nil {
+				return fmt.Errorf("nft output account is nil")
+			}
+			nftOutputsAccount.AppendNFTOutput(output.(*UTXO))
+
+		default:
+			return fmt.Errorf("%w: type %d", iotago.ErrUnknownOutputType, output.Output().Type())
+		}
+	}
+
+	return nil
 }

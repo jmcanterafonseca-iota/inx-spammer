@@ -1,7 +1,9 @@
 package spammer
 
 import (
-	"github.com/iotaledger/hive.go/app"
+	"time"
+
+	"github.com/iotaledger/hive.go/core/app"
 )
 
 // ParametersSpammer contains the definition of the parameters used by the Spammer.
@@ -14,10 +16,12 @@ type ParametersSpammer struct {
 	Tag string `default:"HORNET Spammer" usage:"the tag of the block"`
 	// the tag of the block if the semi-lazy pool is used (uses "tag" if empty)
 	TagSemiLazy string `default:"HORNET Spammer Semi-Lazy" usage:"the tag of the block if the semi-lazy pool is used (uses \"tag\" if empty)"`
-	// workers remains idle for a while when cpu usage gets over this limit (0 = disable)
-	CPUMaxUsage float64 `name:"cpuMaxUsage" default:"0.80" usage:"workers remains idle for a while when cpu usage gets over this limit (0 = disable)"`
+	// whether to spam with transaction payloads instead of data payloads
+	ValueSpamEnabled bool `default:"false" usage:"whether to spam with transaction payloads instead of data payloads"`
 	// the blocks per second rate limit for the spammer (0 = no limit)
 	BPSRateLimit float64 `name:"bpsRateLimit" default:"0.0" usage:"the blocks per second rate limit for the spammer (0 = no limit)"`
+	// workers remains idle for a while when cpu usage gets over this limit (0 = disable)
+	CPUMaxUsage float64 `name:"cpuMaxUsage" default:"0.80" usage:"workers remains idle for a while when cpu usage gets over this limit (0 = disable)"`
 	// the amount of parallel running spammers
 	Workers int `default:"0" usage:"the amount of parallel running spammers"`
 	// whether to automatically start the spammer on startup
@@ -32,11 +36,19 @@ type ParametersSpammer struct {
 	DebugRequestLoggerEnabled bool `default:"false" usage:"whether the debug logging for requests should be enabled"`
 }
 
+// ParametersPoW contains the definition of the parameters used by PoW.
+type ParametersPoW struct {
+	// Defines the interval for refreshing tips during PoW.
+	RefreshTipsInterval time.Duration `default:"5s" usage:"interval for refreshing tips during PoW"`
+}
+
 var ParamsSpammer = &ParametersSpammer{}
+var ParamsPoW = &ParametersPoW{}
 
 var params = &app.ComponentParams{
 	Params: map[string]any{
 		"spammer": ParamsSpammer,
+		"pow":     ParamsPoW,
 	},
 	Masked: nil,
 }

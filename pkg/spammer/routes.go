@@ -23,6 +23,7 @@ const (
 
 type spammerStatus struct {
 	Running           bool    `json:"running"`
+	ValueSpamEnabled  bool    `json:"valueSpamEnabled"`
 	BpsRateLimit      float64 `json:"bpsRateLimit"`
 	CPUMaxUsage       float64 `json:"cpuMaxUsage"`
 	SpammerWorkers    int     `json:"spammerWorkers"`
@@ -30,9 +31,10 @@ type spammerStatus struct {
 }
 
 type startCommand struct {
-	BpsRateLimit   *float64 `json:"bpsRateLimit,omitempty"`
-	CPUMaxUsage    *float64 `json:"cpuMaxUsage,omitempty"`
-	SpammerWorkers *int     `json:"spammerWorkers,omitempty"`
+	ValueSpamEnabled *bool    `json:"valueSpamEnabled,omitempty"`
+	BpsRateLimit     *float64 `json:"bpsRateLimit,omitempty"`
+	CPUMaxUsage      *float64 `json:"cpuMaxUsage,omitempty"`
+	SpammerWorkers   *int     `json:"spammerWorkers,omitempty"`
 }
 
 func (s *SpammerServer) configureRoutes(routeGroup *echo.Group) {
@@ -40,6 +42,7 @@ func (s *SpammerServer) configureRoutes(routeGroup *echo.Group) {
 	routeGroup.GET(RouteSpammerStatus, func(c echo.Context) error {
 		return c.JSON(http.StatusOK, &spammerStatus{
 			Running:           s.Spammer.IsRunning(),
+			ValueSpamEnabled:  s.Spammer.IsValueSpamEnabled(),
 			BpsRateLimit:      s.Spammer.BPSRateLimitRunning(),
 			CPUMaxUsage:       s.Spammer.CPUMaxUsageRunning(),
 			SpammerWorkers:    s.Spammer.SpammerWorkersRunning(),
@@ -53,9 +56,10 @@ func (s *SpammerServer) configureRoutes(routeGroup *echo.Group) {
 			return err
 		}
 
-		if err := s.Spammer.Start(cmd.BpsRateLimit, cmd.CPUMaxUsage, cmd.SpammerWorkers); err != nil {
+		if err := s.Spammer.Start(cmd.ValueSpamEnabled, cmd.BpsRateLimit, cmd.CPUMaxUsage, cmd.SpammerWorkers); err != nil {
 			return err
 		}
+
 		return c.JSON(http.StatusAccepted, nil)
 	})
 

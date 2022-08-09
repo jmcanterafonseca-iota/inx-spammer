@@ -70,8 +70,9 @@ Example:
 | message                   | The message to embed within the spam blocks                                                                 | string  | "We are all made of stardust." |
 | tag                       | The tag of the block                                                                                        | string  | "HORNET Spammer"               |
 | tagSemiLazy               | The tag of the block if the semi-lazy pool is used (uses "tag" if empty)                                    | string  | "HORNET Spammer Semi-Lazy"     |
-| cpuMaxUsage               | Workers remains idle for a while when cpu usage gets over this limit (0 = disable)                          | float   | 0.8                            |
+| valueSpamEnabled          | Whether to spam with transaction payloads instead of data payloads                                          | boolean | false                          |
 | bpsRateLimit              | The blocks per second rate limit for the spammer (0 = no limit)                                             | float   | 0.0                            |
+| cpuMaxUsage               | Workers remains idle for a while when cpu usage gets over this limit (0 = disable)                          | float   | 0.8                            |
 | workers                   | The amount of parallel running spammers                                                                     | int     | 0                              |
 | autostart                 | Automatically start the spammer on startup                                                                  | boolean | false                          |
 | nonLazyTipsThreshold      | The maximum amount of tips in the non-lazy tip-pool before the spammer tries to reduce these (0 = always)   | uint    | 0                              |
@@ -87,8 +88,9 @@ Example:
       "message": "We are all made of stardust.",
       "tag": "HORNET Spammer",
       "tagSemiLazy": "HORNET Spammer Semi-Lazy",
-      "cpuMaxUsage": 0.8,
+      "valueSpamEnabled": false,
       "bpsRateLimit": 0,
+      "cpuMaxUsage": 0.8,
       "workers": 0,
       "autostart": false,
       "nonLazyTipsThreshold": 0,
@@ -98,7 +100,23 @@ Example:
   }
 ```
 
-## <a id="profiling"></a> 4. Profiling
+## <a id="pow"></a> 4. Pow
+
+| Name                | Description                             | Type   | Default value |
+| ------------------- | --------------------------------------- | ------ | ------------- |
+| refreshTipsInterval | Interval for refreshing tips during PoW | string | "5s"          |
+
+Example:
+
+```json
+  {
+    "pow": {
+      "refreshTipsInterval": "5s"
+    }
+  }
+```
+
+## <a id="profiling"></a> 5. Profiling
 
 | Name        | Description                                       | Type    | Default value    |
 | ----------- | ------------------------------------------------- | ------- | ---------------- |
@@ -116,7 +134,7 @@ Example:
   }
 ```
 
-## <a id="prometheus"></a> 5. Prometheus
+## <a id="prometheus"></a> 6. Prometheus
 
 | Name            | Description                                                     | Type    | Default value    |
 | --------------- | --------------------------------------------------------------- | ------- | ---------------- |
