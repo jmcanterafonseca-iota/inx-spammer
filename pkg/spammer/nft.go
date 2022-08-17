@@ -9,9 +9,10 @@ import (
 	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
 
-// collects NFT outputs from a given address
+// collects NFT outputs from a given address.
 func collectNFTOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 	falseCondition := false
+
 	return &nodeclient.NFTsQuery{
 		AddressBech32: addressBech32,
 		IndexerExpirationParas: nodeclient.IndexerExpirationParas{
@@ -35,7 +36,10 @@ func (s *Spammer) nftOutputCreate(ctx context.Context, accountSender *LedgerAcco
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) != 0 {
@@ -99,9 +103,13 @@ func (s *Spammer) nftOutputSend(ctx context.Context, accountSender *LedgerAccoun
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingNFTInputs := consumeInputs(accountSender.NFTOutputs(), func(nftInput *UTXO) (consume bool, abort bool) {
-		nftOutput := nftInput.Output().(*iotago.NFTOutput)
+		nftOutput, ok := nftInput.Output().(*iotago.NFTOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.NFTOutput, got %T", nftInput.Output()))
+		}
 
 		// create the new NFT output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedNFTOutput := nftOutput.Clone().(*iotago.NFTOutput)
 		transitionedNFTOutput.UnlockConditionSet().Address().Address = accountReceiver.Address()
 		if transitionedNFTOutput.NFTID.Empty() {

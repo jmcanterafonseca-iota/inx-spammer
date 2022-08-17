@@ -9,7 +9,7 @@ import (
 	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
 
-// collects Alias outputs from a given address
+// collects Alias outputs from a given address.
 func collectAliasOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 	return &nodeclient.AliasesQuery{
 		StateControllerBech32: addressBech32,
@@ -25,7 +25,10 @@ func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAc
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) != 0 {
@@ -90,9 +93,13 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
 		if transitionedAliasOutput.AliasID.Empty() {
@@ -144,9 +151,13 @@ func (s *Spammer) aliasOutputGovernanceTransition(ctx context.Context, accountSe
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.UnlockConditionSet().GovernorAddress().Address = accountReceiver.Address()
 		transitionedAliasOutput.UnlockConditionSet().StateControllerAddress().Address = accountReceiver.Address()

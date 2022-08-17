@@ -35,35 +35,35 @@ const (
 type outputState byte
 
 const (
-	// create basic output on sender address
+	// create basic output on sender address.
 	stateBasicOutputCreate outputState = iota
-	// send basic output from sender address to receiver address
+	// send basic output from sender address to receiver address.
 	stateBasicOutputSend
-	// create alias output on sender address
+	// create alias output on sender address.
 	stateAliasOutputCreate
-	// do an alias output state transition on sender address
+	// do an alias output state transition on sender address.
 	stateAliasOutputStateTransition
-	// create a token foundry output on sender address
+	// create a token foundry output on sender address.
 	stateFoundryOutputCreate
-	// mint native tokens on sender address
+	// mint native tokens on sender address.
 	stateFoundryOutputMintNativeTokens
-	// sent native tokens from sender address to receiver address
+	// sent native tokens from sender address to receiver address.
 	stateBasicOutputSendNativeTokens
-	// transition ownership of alias output from sender to receiver
+	// transition ownership of alias output from sender to receiver.
 	stateAliasOutputGovernanceTransition
-	// melt native tokens on receiver address
+	// melt native tokens on receiver address.
 	stateFoundryOutputMeltNativeTokens
-	// destroy foundry output on receiver address
+	// destroy foundry output on receiver address.
 	stateFoundryOutputDestroy
-	// destroy alias output on receiver address
+	// destroy alias output on receiver address.
 	stateAliasOutputDestroy
-	// create NFT output on sender address
+	// create NFT output on sender address.
 	stateNFTOutputCreate
-	// send NFT output from sender address to receiver address
+	// send NFT output from sender address to receiver address.
 	stateNFTOutputSend
-	// destroy NFT output on receiver address
+	// destroy NFT output on receiver address.
 	stateNFTOutputDestroy
-	// send basic output from receiver address to sender address
+	// send basic output from receiver address to sender address.
 	stateBasicOutputCollect
 )
 
@@ -97,7 +97,7 @@ type (
 	// GetTipsPoolSizesFunc returns the current tip pool sizes of the node.
 	GetTipsPoolSizesFunc = func() (uint32, uint32)
 
-	// RequestTipsFunc returns tips choosen by the node.
+	// RequestTipsFunc returns tips chosen by the node.
 	RequestTipsFunc = func(ctx context.Context, count uint32, allowSemiLazy bool) (iotago.BlockIDs, error)
 
 	// SendBlockFunc is a function which sends a block to the network.
@@ -145,7 +145,7 @@ type Spammer struct {
 	isNodeHealthyFunc      IsNodeHealthyFunc
 	sendBlockFunc          SendBlockFunc
 	blockMetadataFunc      BlockMetadataFunc
-	spammerMetrics         *SpammerMetrics
+	spammerMetrics         *Metrics
 	cpuUsageUpdater        *CPUUsageUpdater
 	daemon                 hivedaemon.Daemon
 
@@ -172,7 +172,7 @@ type Spammer struct {
 	ledgerMilestoneIndex        atomic.Uint32
 	currentLedgerMilestoneIndex uint32
 
-	Events *SpammerEvents
+	Events *Events
 
 	// pendingTransactionsMap is a map of sent transactions that are pending.
 	pendingTransactionsMap map[iotago.BlockID]*pendingTransaction
@@ -198,7 +198,7 @@ func New(
 	isNodeHealthyFunc IsNodeHealthyFunc,
 	sendBlockFunc SendBlockFunc,
 	blockMetadataFunc BlockMetadataFunc,
-	spammerMetrics *SpammerMetrics,
+	spammerMetrics *Metrics,
 	cpuUsageUpdater *CPUUsageUpdater,
 	daemon hivedaemon.Daemon,
 	log *logger.Logger) (*Spammer, error) {
@@ -258,7 +258,7 @@ func New(
 		daemon:                 daemon,
 		indexer:                indexer,
 		// Events are the events of the spammer
-		Events: &SpammerEvents{
+		Events: &Events{
 			SpamPerformed:         events.NewEvent(SpamStatsCaller),
 			AvgSpamMetricsUpdated: events.NewEvent(AvgSpamMetricsCaller),
 		},
@@ -339,6 +339,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 
 	if s.accountSender == nil || s.accountReceiver == nil {
 		logDebugStateErrorFunc(s.outputState, common.ErrMnemonicNotProvided)
+
 		return common.ErrMnemonicNotProvided
 	}
 
@@ -495,6 +496,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 				if currentProcessID != s.processID.Load() {
 					close(rateLimitAbortSignal)
 					rateLimitCtxCancel()
+
 					return
 				}
 
@@ -510,6 +512,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 					// received shutdown signal
 					close(rateLimitAbortSignal)
 					rateLimitCtxCancel()
+
 					return
 
 				case rateLimitChannel <- struct{}{}:
@@ -566,11 +569,13 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 				isHealthy, err := s.isNodeHealthyFunc()
 				if err != nil {
 					s.LogWarn(err)
+
 					continue
 				}
 
 				if !isHealthy {
 					time.Sleep(time.Second)
+
 					continue
 				}
 
@@ -578,6 +583,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 					if !errors.Is(err, common.ErrOperationAborted) {
 						s.LogWarn(err)
 					}
+
 					continue
 				}
 
@@ -609,7 +615,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 	return nil
 }
 
-// ATTENTION: spammer lock should not be aquired when
+// ATTENTION: spammer lock should not be acquired when
 // calling this function because it might deadlock.
 func (s *Spammer) triggerStopSignalAndWait() {
 	// increase the process ID to stop all running workers
@@ -789,6 +795,7 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 			// the pending transaction was affected by the ledger update.
 			// remove the pending transaction from the pending transactions map.
 			s.clearPendingTransactionWithoutLocking(pendingTx.BlockID)
+
 			continue
 		}
 
@@ -796,6 +803,7 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 			// the pending transaction was affected by the ledger update.
 			// remove the pending transaction from the pending transactions map.
 			s.clearPendingTransactionWithoutLocking(pendingTx.BlockID)
+
 			continue
 		}
 	}
@@ -814,12 +822,14 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 		if err != nil {
 			// an error occurred
 			conflicting = true
+
 			return
 		}
 
 		if metadata == nil {
 			// block unknown
 			conflicting = true
+
 			return
 		}
 
@@ -827,8 +837,10 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 			if metadata.IsConflicting {
 				// transaction was conflicting
 				conflicting = true
+
 				return
 			}
+
 			return
 		}
 
@@ -968,17 +980,22 @@ func (s *Spammer) composeTaggedData(isSemiLazy bool, timeGTTA time.Duration, add
 
 func addBalanceToOutput(output iotago.Output, balance uint64) error {
 
+	//nolint:exhaustive // we do not need to check all output types
 	switch output.Type() {
 	case iotago.OutputBasic:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.BasicOutput)
 		o.Amount += balance
 	case iotago.OutputAlias:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.AliasOutput)
 		o.Amount += balance
 	case iotago.OutputFoundry:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.FoundryOutput)
 		o.Amount += balance
 	case iotago.OutputNFT:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.NFTOutput)
 		o.Amount += balance
 	default:
@@ -992,23 +1009,28 @@ func setMinimumBalanceOfOutput(protocolParams *iotago.ProtocolParameters, output
 
 	minAmount := protocolParams.RentStructure.MinRent(output)
 
+	//nolint:exhaustive // we do not need to check all output types
 	switch output.Type() {
 	case iotago.OutputBasic:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.BasicOutput)
 		if o.Amount < minAmount {
 			o.Amount = minAmount
 		}
 	case iotago.OutputAlias:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.AliasOutput)
 		if o.Amount < minAmount {
 			o.Amount = minAmount
 		}
 	case iotago.OutputFoundry:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.FoundryOutput)
 		if o.Amount < minAmount {
 			o.Amount = minAmount
 		}
 	case iotago.OutputNFT:
+		//nolint:forcetypeassert // we already checked the type
 		o := output.(*iotago.NFTOutput)
 		if o.Amount < minAmount {
 			o.Amount = minAmount
@@ -1046,6 +1068,7 @@ func (s *Spammer) BuildTaggedDataBlockAndSend(ctx context.Context) error {
 	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), 1, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
 		_, refreshedTips, _, err := s.selectSpammerTips(ctx, iotago.BlockIDs{})
+
 		return refreshedTips, err
 	}); err != nil {
 		return err
@@ -1092,8 +1115,10 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 
 		var unlockAddress iotago.Address
 
+		//nolint:exhaustive // we do not need to check all output types
 		switch input.Output().Type() {
 		case iotago.OutputBasic:
+			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.BasicOutput)
 
 			addrUnlockCondition := o.UnlockConditionSet().Address()
@@ -1108,6 +1133,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputAlias:
+			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.AliasOutput)
 
 			addrUnlockCondition := o.UnlockConditionSet().StateControllerAddress()
@@ -1122,6 +1148,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputFoundry:
+			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.FoundryOutput)
 
 			addrUnlockCondition := o.UnlockConditionSet().ImmutableAlias()
@@ -1132,6 +1159,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputNFT:
+			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.NFTOutput)
 
 			addrUnlockCondition := o.UnlockConditionSet().Address()
@@ -1246,6 +1274,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), s.workersCountRunning, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
 		_, refreshedTips, _, err := s.selectSpammerTips(ctx, spamBuilder.requiredTips)
+
 		return refreshedTips, err
 	}); err != nil {
 		return nil, nil, err
@@ -1313,24 +1342,43 @@ func (s *Spammer) bookCreatedOutputs(createdOutputs []UTXOInterface, basicOutput
 
 	for _, output := range createdOutputs {
 
+		//nolint:exhaustive // we do not need to check all output types
 		switch output.Output().Type() {
 		case iotago.OutputBasic:
 			if basicOutputsAccount == nil {
 				return fmt.Errorf("basic output account is nil")
 			}
-			basicOutputsAccount.AppendBasicOutput(output.(*UTXO))
+
+			utxo, ok := output.(*UTXO)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *UTXO, got %T", output))
+			}
+
+			basicOutputsAccount.AppendBasicOutput(utxo)
 
 		case iotago.OutputAlias:
 			if aliasOutputsAccount == nil {
 				return fmt.Errorf("alias output account is nil")
 			}
-			aliasOutputsAccount.AppendAliasOutput(output.(*AliasUTXO))
+
+			aliasUTXO, ok := output.(*AliasUTXO)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *AliasUTXO, got %T", output))
+			}
+
+			aliasOutputsAccount.AppendAliasOutput(aliasUTXO)
 
 		case iotago.OutputFoundry:
 			if aliasOutputsAccount == nil {
 				return fmt.Errorf("alias output account is nil")
 			}
-			if err := aliasOutputsAccount.AppendFoundryOutput(output.(*UTXO)); err != nil {
+
+			utxo, ok := output.(*UTXO)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *UTXO, got %T", output))
+			}
+
+			if err := aliasOutputsAccount.AppendFoundryOutput(utxo); err != nil {
 				return err
 			}
 
@@ -1338,7 +1386,13 @@ func (s *Spammer) bookCreatedOutputs(createdOutputs []UTXOInterface, basicOutput
 			if nftOutputsAccount == nil {
 				return fmt.Errorf("nft output account is nil")
 			}
-			nftOutputsAccount.AppendNFTOutput(output.(*UTXO))
+
+			utxo, ok := output.(*UTXO)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *UTXO, got %T", output))
+			}
+
+			nftOutputsAccount.AppendNFTOutput(utxo)
 
 		default:
 			return fmt.Errorf("%w: type %d", iotago.ErrUnknownOutputType, output.Output().Type())

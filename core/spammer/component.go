@@ -68,8 +68,8 @@ func provide(c *dig.Container) error {
 		return err
 	}
 
-	if err := c.Provide(func() *spammer.SpammerMetrics {
-		return &spammer.SpammerMetrics{}
+	if err := c.Provide(func() *spammer.Metrics {
+		return &spammer.Metrics{}
 	}); err != nil {
 		return err
 	}
@@ -85,12 +85,16 @@ func provide(c *dig.Container) error {
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok && st.Code() == codes.NotFound {
+				//nolint:nilnil // nil, nil is ok in this context, even if it is not go idiomatic
 				return nil, nil
 			}
+
 			return nil, err
 		}
+
 		return &spammer.Metadata{
-			IsReferenced:   metadata.GetReferencedByMilestoneIndex() != 0,
+			IsReferenced: metadata.GetReferencedByMilestoneIndex() != 0,
+			//nolint:nosnakecase // grpc uses underscores
 			IsConflicting:  metadata.GetConflictReason() != inx.BlockMetadata_CONFLICT_REASON_NONE,
 			ShouldReattach: metadata.GetShouldReattach(),
 		}, nil
@@ -98,7 +102,7 @@ func provide(c *dig.Container) error {
 
 	type spammerDeps struct {
 		dig.In
-		SpammerMetrics  *spammer.SpammerMetrics
+		SpammerMetrics  *spammer.Metrics
 		NodeBridge      *nodebridge.NodeBridge
 		CPUUsageUpdater *spammer.CPUUsageUpdater
 		TipPoolListener *nodebridge.TipPoolListener
@@ -144,6 +148,7 @@ func provide(c *dig.Container) error {
 				if err != nil {
 					return false, err
 				}
+
 				return status.IsHealthy, nil
 			},
 			deps.NodeBridge.SubmitBlock,
@@ -167,7 +172,7 @@ func configure() error {
 func run() error {
 
 	// create a background worker that handles the ledger updates
-	CoreComponent.Daemon().BackgroundWorker("Spammer[LedgerUpdates]", func(ctx context.Context) {
+	if err := CoreComponent.Daemon().BackgroundWorker("Spammer[LedgerUpdates]", func(ctx context.Context) {
 		if err := deps.NodeBridge.ListenToLedgerUpdates(ctx, 0, 0, func(update *nodebridge.LedgerUpdate) error {
 			createdOutputs := iotago.OutputIDs{}
 			for _, output := range update.Created {
@@ -182,11 +187,14 @@ func run() error {
 			if err != nil {
 				deps.ShutdownHandler.SelfShutdown(fmt.Sprintf("Spammer plugin hit a critical error while applying new ledger update: %s", err.Error()), true)
 			}
+
 			return err
 		}); err != nil {
 			deps.ShutdownHandler.SelfShutdown(fmt.Sprintf("Listening to LedgerUpdates failed, error: %s", err), true)
 		}
-	}, daemon.PriorityStopSpammerLedgerUpdates)
+	}, daemon.PriorityStopSpammerLedgerUpdates); err != nil {
+		CoreComponent.LogPanicf("failed to start worker: %s", err)
+	}
 
 	// create a background worker that measures current CPU usage
 	if err := CoreComponent.Daemon().BackgroundWorker("CPU Usage Updater", func(ctx context.Context) {
@@ -224,7 +232,7 @@ func run() error {
 
 		CoreComponent.LogInfo("Starting API server...")
 
-		_ = spammer.NewSpammerServer(deps.Spammer, e.Group(""))
+		_ = spammer.NewServer(deps.Spammer, e.Group(""))
 
 		go func() {
 			CoreComponent.LogInfof("You can now access the API using: http://%s", ParamsSpammer.BindAddress)

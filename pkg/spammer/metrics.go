@@ -4,8 +4,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-// SpammerMetrics defines metrics for the spammer.
-type SpammerMetrics struct {
+// Metrics defines metrics for the spammer.
+type Metrics struct {
 	// The number of sent spam blocks.
 	SentSpamBlocks atomic.Uint32
 }

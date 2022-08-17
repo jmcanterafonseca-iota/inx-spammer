@@ -11,7 +11,7 @@ import (
 	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
 
-// collects Foundry outputs from a given alias
+// collects Foundry outputs from a given alias.
 func collectFoundryOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 	return &nodeclient.FoundriesQuery{
 		AliasAddressBech32: addressBech32,
@@ -31,7 +31,10 @@ func (s *Spammer) foundryOutputCreate(ctx context.Context, accountSender *Ledger
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) != 0 {
@@ -55,9 +58,13 @@ func (s *Spammer) foundryOutputCreate(ctx context.Context, accountSender *Ledger
 	}
 
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
 		transitionedAliasOutput.FoundryCounter++
@@ -75,6 +82,11 @@ func (s *Spammer) foundryOutputCreate(ctx context.Context, accountSender *Ledger
 			return false, true
 		}
 
+		aliasAddress, ok := transitionedAliasOutput.AliasID.ToAddress().(*iotago.AliasAddress)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasAddress, got %T", transitionedAliasOutput.AliasID.ToAddress()))
+		}
+
 		// create the new foundry output
 		newFoundryOutput := &iotago.FoundryOutput{
 			Amount:       0,
@@ -86,7 +98,7 @@ func (s *Spammer) foundryOutputCreate(ctx context.Context, accountSender *Ledger
 				MaximumSupply: big.NewInt(1000000000),
 			},
 			Conditions: iotago.UnlockConditions{
-				&iotago.ImmutableAliasUnlockCondition{Address: transitionedAliasOutput.AliasID.ToAddress().(*iotago.AliasAddress)},
+				&iotago.ImmutableAliasUnlockCondition{Address: aliasAddress},
 			},
 			Features: nil,
 			ImmutableFeatures: iotago.Features{
@@ -140,7 +152,10 @@ func (s *Spammer) foundryOutputMintNativeTokens(ctx context.Context, accountSend
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) != 0 {
@@ -166,9 +181,13 @@ func (s *Spammer) foundryOutputMintNativeTokens(ctx context.Context, accountSend
 
 	aliasConsumed := false
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
@@ -182,9 +201,17 @@ func (s *Spammer) foundryOutputMintNativeTokens(ctx context.Context, accountSend
 
 		foundryConsumed := false
 		_, remainingFoundryInputs := consumeInputs(aliasInput.FoundryOutputs(), func(foundryInput *UTXO) (consume bool, abort bool) {
-			foundryOutput := foundryInput.Output().(*iotago.FoundryOutput)
+			foundryOutput, ok := foundryInput.Output().(*iotago.FoundryOutput)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.FoundryOutput, got %T", foundryInput.Output()))
+			}
 
-			if foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MintedTokens.Sign() > 0 {
+			simpleTokenScheme, ok := foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.SimpleTokenScheme, got %T", foundryOutput.TokenScheme))
+			}
+
+			if simpleTokenScheme.MintedTokens.Sign() > 0 {
 				// token already minted, do not consume the foundry output
 				return false, false
 			}
@@ -194,9 +221,11 @@ func (s *Spammer) foundryOutputMintNativeTokens(ctx context.Context, accountSend
 			}
 
 			// create the new foundry output
+			//nolint:forcetypeassert // we already checked the type
 			transitionedFoundryOutput := foundryOutput.Clone().(*iotago.FoundryOutput)
 
 			// mint tokens in foundry
+			//nolint:forcetypeassert // we already checked the type
 			transitionedFoundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MintedTokens = big.NewInt(100000000)
 
 			if !spamBuilderTmp.AddOutput(transitionedFoundryOutput) {
@@ -285,7 +314,10 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 	basicOutputsPerNativeTokensMap := make(map[iotago.NativeTokenID][]*UTXO)
 
 	_, _ = consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) == 0 {
@@ -314,7 +346,10 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 	})
 
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		if _, exists := basicOutputsAliasIDsMap[aliasOutput.AliasID]; !exists {
 			// there is no native token that belongs to this alias, do not consume the alias output
@@ -324,6 +359,7 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 		spamBuilderTmpAlias := spamBuilder.Clone()
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
@@ -335,7 +371,10 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 
 		foundryConsumed := false
 		_, remainingFoundryInputs := consumeInputs(aliasInput.FoundryOutputs(), func(foundryInput *UTXO) (consume bool, abort bool) {
-			foundryOutput := foundryInput.Output().(*iotago.FoundryOutput)
+			foundryOutput, ok := foundryInput.Output().(*iotago.FoundryOutput)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.FoundryOutput, got %T", foundryInput.Output()))
+			}
 
 			foundryID := foundryOutput.MustID()
 
@@ -346,7 +385,12 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 				return false, false
 			}
 
-			if foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MintedTokens.Sign() < 1 {
+			simpleTokenScheme, ok := foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.SimpleTokenScheme, got %T", foundryOutput.TokenScheme))
+			}
+
+			if simpleTokenScheme.MintedTokens.Sign() < 1 {
 				// no token available in the foundry, do not consume the foundry output
 				return false, false
 			}
@@ -360,7 +404,10 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 			tokensToMelt := big.NewInt(0)
 			basicOutputFound = false
 			_, _ = consumeInputs(basicOutputsWithNativeToken, func(basicInput *UTXO) (consume bool, abort bool) {
-				basicOutput := basicInput.Output().(*iotago.BasicOutput)
+				basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+				if !ok {
+					panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+				}
 
 				spamBuilderTmpBasic := spamBuilderTmpFoundry.Clone()
 
@@ -404,10 +451,13 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 			}
 
 			// create the new foundry output
+			//nolint:forcetypeassert // we already checked the type
 			transitionedFoundryOutput := foundryOutput.Clone().(*iotago.FoundryOutput)
 
 			// melt tokens in foundry
+			//nolint:forcetypeassert // we already checked the type
 			newMeltedBalance := big.NewInt(0).Add(transitionedFoundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MeltedTokens, tokensToMelt)
+			//nolint:forcetypeassert // we already checked the type
 			transitionedFoundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MeltedTokens = newMeltedBalance
 
 			// we leave some space for the alias output and the remainder output
@@ -451,6 +501,7 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 		if spamBuilder.InputConsumed(basicInput.OutputID()) {
 			return true, false
 		}
+
 		return false, false
 	})
 
@@ -478,9 +529,13 @@ func (s *Spammer) foundryOutputDestroy(ctx context.Context, accountSender *Ledge
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
-		aliasOutput := aliasInput.Output().(*iotago.AliasOutput)
+		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
+		}
 
 		// create the new alias output
+		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
@@ -494,9 +549,17 @@ func (s *Spammer) foundryOutputDestroy(ctx context.Context, accountSender *Ledge
 
 		foundryConsumed := false
 		_, remainingFoundryInputs := consumeInputs(aliasInput.FoundryOutputs(), func(foundryInput *UTXO) (consume bool, abort bool) {
-			foundryOutput := foundryInput.Output().(*iotago.FoundryOutput)
+			foundryOutput, ok := foundryInput.Output().(*iotago.FoundryOutput)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.FoundryOutput, got %T", foundryInput.Output()))
+			}
 
-			if foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MintedTokens.Cmp(foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme).MeltedTokens) > 0 {
+			simpleTokenScheme, ok := foundryOutput.TokenScheme.(*iotago.SimpleTokenScheme)
+			if !ok {
+				panic(fmt.Sprintf("invalid type: expected *iotago.SimpleTokenScheme, got %T", foundryOutput.TokenScheme))
+			}
+
+			if simpleTokenScheme.MintedTokens.Cmp(simpleTokenScheme.MeltedTokens) > 0 {
 				// not all tokens melted, do not consume the foundry output
 				return false, false
 			}

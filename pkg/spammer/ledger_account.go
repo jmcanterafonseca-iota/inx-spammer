@@ -85,7 +85,10 @@ func (la *LedgerAccount) AppendAliasOutput(aliasOutput *AliasUTXO) {
 }
 
 func (la *LedgerAccount) AppendFoundryOutput(foundryOutput *UTXO) error {
-	foundryInput := foundryOutput.Output().(*iotago.FoundryOutput)
+	foundryInput, ok := foundryOutput.Output().(*iotago.FoundryOutput)
+	if !ok {
+		panic(fmt.Sprintf("invalid type: expected *iotago.FoundryOutput, got %T", foundryOutput.Output()))
+	}
 
 	foundryID := foundryInput.MustID()
 	aliasID, err := AliasIDFromFoundryID(foundryID)
@@ -94,12 +97,17 @@ func (la *LedgerAccount) AppendFoundryOutput(foundryOutput *UTXO) error {
 	}
 
 	for _, aliasOutput := range la.aliasOutputs {
-		aliasInput := aliasOutput.Output().(*iotago.AliasOutput)
+		aliasInput, ok := aliasOutput.Output().(*iotago.AliasOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasOutput.Output()))
+		}
+
 		if !aliasInput.AliasID.Matches(aliasID) {
 			continue
 		}
 
 		aliasOutput.AppendFoundryOutput(foundryOutput)
+
 		return nil
 	}
 

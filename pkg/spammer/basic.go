@@ -9,9 +9,10 @@ import (
 	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
 
-// collects Basic outputs from a given address
+// collects Basic outputs from a given address.
 func collectBasicOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 	falseCondition := false
+
 	return &nodeclient.BasicOutputsQuery{
 		AddressBech32: addressBech32,
 		IndexerExpirationParas: nodeclient.IndexerExpirationParas{
@@ -35,7 +36,10 @@ func (s *Spammer) basicOutputSend(ctx context.Context, accountSender *LedgerAcco
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) != 0 {
@@ -94,7 +98,10 @@ func (s *Spammer) basicOutputSendNativeTokens(ctx context.Context, accountSender
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
 	_, remainingBasicInputs := consumeInputs(accountSender.BasicOutputs(), func(basicInput *UTXO) (consume bool, abort bool) {
-		basicOutput := basicInput.Output().(*iotago.BasicOutput)
+		basicOutput, ok := basicInput.Output().(*iotago.BasicOutput)
+		if !ok {
+			panic(fmt.Sprintf("invalid type: expected *iotago.BasicOutput, got %T", basicInput.Output()))
+		}
 
 		nativeTokens := basicOutput.NativeTokenList().MustSet()
 		if len(nativeTokens) == 0 {
@@ -103,6 +110,7 @@ func (s *Spammer) basicOutputSendNativeTokens(ctx context.Context, accountSender
 		}
 
 		// send the native tokens to a new basic output
+		//nolint:forcetypeassert // we already checked the type
 		createdBasicOutput := basicOutput.Clone().(*iotago.BasicOutput)
 		createdBasicOutput.UnlockConditionSet().Address().Address = accountReceiver.Address()
 

@@ -133,6 +133,7 @@ func (b *SpamBuilder) addInputsToConsume(inputs ...UTXOInterface) {
 // InputConsumed checks if the given input is already consumed.
 func (b *SpamBuilder) InputConsumed(outputID iotago.OutputID) bool {
 	_, exists := b.consumedInputsMap[outputID]
+
 	return exists
 }
 
