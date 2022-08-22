@@ -42,6 +42,7 @@ func main() {
 	replaceTopicNames := make(map[string]string)
 	replaceTopicNames["app"] = "Application"
 	replaceTopicNames["inx"] = "INX"
+	replaceTopicNames["valueSpam"] = "Value Spam"
 
 	application := spammerApp.App()
 

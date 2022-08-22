@@ -13,7 +13,12 @@ import (
 
 // collects Foundry outputs from a given alias.
 func collectFoundryOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
+	falseCondition := false
+
 	return &nodeclient.FoundriesQuery{
+		IndexerNativeTokenParas: nodeclient.IndexerNativeTokenParas{
+			HasNativeTokens: &falseCondition,
+		},
 		AliasAddressBech32: addressBech32,
 	}
 }

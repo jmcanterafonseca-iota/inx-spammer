@@ -15,6 +15,9 @@ func collectNFTOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 
 	return &nodeclient.NFTsQuery{
 		AddressBech32: addressBech32,
+		IndexerNativeTokenParas: nodeclient.IndexerNativeTokenParas{
+			HasNativeTokens: &falseCondition,
+		},
 		IndexerExpirationParas: nodeclient.IndexerExpirationParas{
 			HasExpiration: &falseCondition,
 		},

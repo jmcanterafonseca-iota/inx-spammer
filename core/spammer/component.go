@@ -113,7 +113,7 @@ func provide(c *dig.Container) error {
 
 		mnemonic, err := loadMnemonicFromEnvironment("SPAMMER_MNEMONIC")
 		if err != nil {
-			if ParamsSpammer.ValueSpamEnabled {
+			if ParamsSpammer.ValueSpam.Enabled {
 				CoreComponent.LogPanicf("value spam enabled but loading mnemonic seed failed, err: %s", err)
 			}
 		}
@@ -131,15 +131,25 @@ func provide(c *dig.Container) error {
 			deps.NodeBridge.ProtocolParameters,
 			deps.NodeBridge.INXNodeClient(),
 			wallet,
-			ParamsSpammer.ValueSpamEnabled,
 			ParamsSpammer.BPSRateLimit,
 			ParamsSpammer.CPUMaxUsage,
 			ParamsSpammer.Workers,
 			ParamsSpammer.Message,
 			ParamsSpammer.Tag,
 			ParamsSpammer.TagSemiLazy,
-			ParamsSpammer.NonLazyTipsThreshold,
-			ParamsSpammer.SemiLazyTipsThreshold,
+			ParamsSpammer.ValueSpam.Enabled,
+			ParamsSpammer.ValueSpam.SendBasicOutput,
+			ParamsSpammer.ValueSpam.CollectBasicOutput,
+			ParamsSpammer.ValueSpam.CreateAlias,
+			ParamsSpammer.ValueSpam.DestroyAlias,
+			ParamsSpammer.ValueSpam.CreateFoundry,
+			ParamsSpammer.ValueSpam.DestroyFoundry,
+			ParamsSpammer.ValueSpam.MintNativeToken,
+			ParamsSpammer.ValueSpam.MeltNativeToken,
+			ParamsSpammer.ValueSpam.CreateNFT,
+			ParamsSpammer.ValueSpam.DestroyNFT,
+			ParamsSpammer.Tipselection.NonLazyTipsThreshold,
+			ParamsSpammer.Tipselection.SemiLazyTipsThreshold,
 			ParamsPoW.RefreshTipsInterval,
 			deps.TipPoolListener.GetTipsPoolSizes,
 			deps.NodeBridge.RequestTips,
@@ -228,20 +238,20 @@ func run() error {
 	if err := CoreComponent.Daemon().BackgroundWorker("API", func(ctx context.Context) {
 		CoreComponent.LogInfo("Starting API ... done")
 
-		e := httpserver.NewEcho(CoreComponent.Logger(), nil, ParamsSpammer.DebugRequestLoggerEnabled)
+		e := httpserver.NewEcho(CoreComponent.Logger(), nil, ParamsRestAPI.DebugRequestLoggerEnabled)
 
 		CoreComponent.LogInfo("Starting API server...")
 
 		_ = spammer.NewServer(deps.Spammer, e.Group(""))
 
 		go func() {
-			CoreComponent.LogInfof("You can now access the API using: http://%s", ParamsSpammer.BindAddress)
-			if err := e.Start(ParamsSpammer.BindAddress); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			CoreComponent.LogInfof("You can now access the API using: http://%s", ParamsRestAPI.BindAddress)
+			if err := e.Start(ParamsRestAPI.BindAddress); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				CoreComponent.LogPanicf("Stopped REST-API server due to an error (%s)", err)
 			}
 		}()
 
-		if err := deps.NodeBridge.RegisterAPIRoute(APIRoute, ParamsSpammer.BindAddress); err != nil {
+		if err := deps.NodeBridge.RegisterAPIRoute(APIRoute, ParamsRestAPI.BindAddress); err != nil {
 			CoreComponent.LogPanicf("Registering INX api route failed, error: %s", err)
 		}
 

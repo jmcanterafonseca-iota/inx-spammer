@@ -64,43 +64,93 @@ Example:
 
 ## <a id="spammer"></a> 3. Spammer
 
-| Name                      | Description                                                                                                 | Type    | Default value                  |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------- | ------- | ------------------------------ |
-| bindAddress               | The bind address on which the Spammer HTTP server listens                                                   | string  | "localhost:9092"               |
-| message                   | The message to embed within the spam blocks                                                                 | string  | "We are all made of stardust." |
-| tag                       | The tag of the block                                                                                        | string  | "HORNET Spammer"               |
-| tagSemiLazy               | The tag of the block if the semi-lazy pool is used (uses "tag" if empty)                                    | string  | "HORNET Spammer Semi-Lazy"     |
-| valueSpamEnabled          | Whether to spam with transaction payloads instead of data payloads                                          | boolean | false                          |
-| bpsRateLimit              | The blocks per second rate limit for the spammer (0 = no limit)                                             | float   | 0.0                            |
-| cpuMaxUsage               | Workers remains idle for a while when cpu usage gets over this limit (0 = disable)                          | float   | 0.8                            |
-| workers                   | The amount of parallel running spammers                                                                     | int     | 0                              |
-| autostart                 | Automatically start the spammer on startup                                                                  | boolean | false                          |
-| nonLazyTipsThreshold      | The maximum amount of tips in the non-lazy tip-pool before the spammer tries to reduce these (0 = always)   | uint    | 0                              |
-| semiLazyTipsThreshold     | The maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable) | uint    | 30                             |
-| debugRequestLoggerEnabled | Whether the debug logging for requests should be enabled                                                    | boolean | false                          |
+| Name                                  | Description                                                                        | Type    | Default value                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------- | ------- | ------------------------------ |
+| autostart                             | Automatically start the spammer on startup                                         | boolean | false                          |
+| bpsRateLimit                          | The blocks per second rate limit for the spammer (0 = no limit)                    | float   | 0.0                            |
+| cpuMaxUsage                           | Workers remains idle for a while when cpu usage gets over this limit (0 = disable) | float   | 0.8                            |
+| workers                               | The amount of parallel running spammers                                            | int     | 0                              |
+| message                               | The message to embed within the spam blocks                                        | string  | "We are all made of stardust." |
+| tag                                   | The tag of the block                                                               | string  | "HORNET Spammer"               |
+| tagSemiLazy                           | The tag of the block if the semi-lazy pool is used (uses "tag" if empty)           | string  | "HORNET Spammer Semi-Lazy"     |
+| [valueSpam](#spammer_valuespam)       | Configuration for Value Spam                                                       | object  |                                |
+| [tipselection](#spammer_tipselection) | Configuration for tipselection                                                     | object  |                                |
+
+### <a id="spammer_valuespam"></a> Value Spam
+
+| Name               | Description                                                        | Type    | Default value |
+| ------------------ | ------------------------------------------------------------------ | ------- | ------------- |
+| enabled            | Whether to spam with transaction payloads instead of data payloads | boolean | false         |
+| sendBasicOutput    | Whether to send basic outputs                                      | boolean | true          |
+| collectBasicOutput | Whether to collect basic outputs                                   | boolean | true          |
+| createAlias        | Whether to create aliases                                          | boolean | true          |
+| destroyAlias       | Whether to destroy aliases                                         | boolean | true          |
+| createFoundry      | Whether to create foundries                                        | boolean | true          |
+| destroyFoundry     | Whether to destroy foundries                                       | boolean | true          |
+| mintNativeToken    | Whether to mint native tokens                                      | boolean | true          |
+| meltNativeToken    | Whether to melt native tokens                                      | boolean | true          |
+| createNFT          | Whether to create NFTs                                             | boolean | true          |
+| destroyNFT         | Whether to destroy NFTs                                            | boolean | true          |
+
+### <a id="spammer_tipselection"></a> Tipselection
+
+| Name                  | Description                                                                                                 | Type | Default value |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- | ---- | ------------- |
+| nonLazyTipsThreshold  | The maximum amount of tips in the non-lazy tip-pool before the spammer tries to reduce these (0 = always)   | uint | 0             |
+| semiLazyTipsThreshold | The maximum amount of tips in the semi-lazy tip-pool before the spammer tries to reduce these (0 = disable) | uint | 30            |
 
 Example:
 
 ```json
   {
     "spammer": {
-      "bindAddress": "localhost:9092",
-      "message": "We are all made of stardust.",
-      "tag": "HORNET Spammer",
-      "tagSemiLazy": "HORNET Spammer Semi-Lazy",
-      "valueSpamEnabled": false,
+      "autostart": false,
       "bpsRateLimit": 0,
       "cpuMaxUsage": 0.8,
       "workers": 0,
-      "autostart": false,
-      "nonLazyTipsThreshold": 0,
-      "semiLazyTipsThreshold": 30,
+      "message": "We are all made of stardust.",
+      "tag": "HORNET Spammer",
+      "tagSemiLazy": "HORNET Spammer Semi-Lazy",
+      "valueSpam": {
+        "enabled": false,
+        "sendBasicOutput": true,
+        "collectBasicOutput": true,
+        "createAlias": true,
+        "destroyAlias": true,
+        "createFoundry": true,
+        "destroyFoundry": true,
+        "mintNativeToken": true,
+        "meltNativeToken": true,
+        "createNFT": true,
+        "destroyNFT": true
+      },
+      "tipselection": {
+        "nonLazyTipsThreshold": 0,
+        "semiLazyTipsThreshold": 30
+      }
+    }
+  }
+```
+
+## <a id="restapi"></a> 4. RestAPI
+
+| Name                      | Description                                               | Type    | Default value    |
+| ------------------------- | --------------------------------------------------------- | ------- | ---------------- |
+| bindAddress               | The bind address on which the Spammer HTTP server listens | string  | "localhost:9092" |
+| debugRequestLoggerEnabled | Whether the debug logging for requests should be enabled  | boolean | false            |
+
+Example:
+
+```json
+  {
+    "restAPI": {
+      "bindAddress": "localhost:9092",
       "debugRequestLoggerEnabled": false
     }
   }
 ```
 
-## <a id="pow"></a> 4. Pow
+## <a id="pow"></a> 5. Pow
 
 | Name                | Description                             | Type   | Default value |
 | ------------------- | --------------------------------------- | ------ | ------------- |
@@ -116,7 +166,7 @@ Example:
   }
 ```
 
-## <a id="profiling"></a> 5. Profiling
+## <a id="profiling"></a> 6. Profiling
 
 | Name        | Description                                       | Type    | Default value    |
 | ----------- | ------------------------------------------------- | ------- | ---------------- |
@@ -134,7 +184,7 @@ Example:
   }
 ```
 
-## <a id="prometheus"></a> 6. Prometheus
+## <a id="prometheus"></a> 7. Prometheus
 
 | Name            | Description                                                     | Type    | Default value    |
 | --------------- | --------------------------------------------------------------- | ------- | ---------------- |

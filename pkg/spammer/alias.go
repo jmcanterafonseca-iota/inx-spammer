@@ -11,7 +11,12 @@ import (
 
 // collects Alias outputs from a given address.
 func collectAliasOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
+	falseCondition := false
+
 	return &nodeclient.AliasesQuery{
+		IndexerNativeTokenParas: nodeclient.IndexerNativeTokenParas{
+			HasNativeTokens: &falseCondition,
+		},
 		StateControllerBech32: addressBech32,
 	}
 }

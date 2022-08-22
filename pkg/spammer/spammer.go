@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
+	"github.com/iotaledger/hive.go/core/contextutils"
 	hivedaemon "github.com/iotaledger/hive.go/core/daemon"
 	"github.com/iotaledger/hive.go/core/datastructure/timeheap"
 	"github.com/iotaledger/hive.go/core/events"
@@ -30,6 +31,11 @@ import (
 const (
 	AddressIndexSender   = 0
 	AddressIndexReceiver = 1
+)
+
+const (
+	IndexerQueryMaxResults = 1000
+	IndexerQueryTimeout    = 30 * time.Second
 )
 
 type outputState byte
@@ -130,24 +136,35 @@ type Spammer struct {
 
 	protocolParametersFunc ProtocolParametersFunc
 	nodeClient             *nodeclient.Client
-	valueSpamEnabled       bool
-	bpsRateLimit           float64
-	cpuMaxUsage            float64
-	workersCount           int
-	message                string
-	tag                    string
-	tagSemiLazy            string
-	nonLazyTipsThreshold   uint32
-	semiLazyTipsThreshold  uint32
-	refreshTipsInterval    time.Duration
-	getTipsPoolSizesFunc   GetTipsPoolSizesFunc
-	requestTipsFunc        RequestTipsFunc
-	isNodeHealthyFunc      IsNodeHealthyFunc
-	sendBlockFunc          SendBlockFunc
-	blockMetadataFunc      BlockMetadataFunc
-	spammerMetrics         *Metrics
-	cpuUsageUpdater        *CPUUsageUpdater
-	daemon                 hivedaemon.Daemon
+
+	bpsRateLimit                float64
+	cpuMaxUsage                 float64
+	workersCount                int
+	message                     string
+	tag                         string
+	tagSemiLazy                 string
+	valueSpamEnabled            bool
+	valueSpamSendBasicOutput    bool
+	valueSpamCollectBasicOutput bool
+	valueSpamCreateAlias        bool
+	valueSpamDestroyAlias       bool
+	valueSpamCreateFoundry      bool
+	valueSpamDestroyFoundry     bool
+	valueSpamMintNativeToken    bool
+	valueSpamMeltNativeToken    bool
+	valueSpamCreateNFT          bool
+	valueSpamDestroyNFT         bool
+	nonLazyTipsThreshold        uint32
+	semiLazyTipsThreshold       uint32
+	refreshTipsInterval         time.Duration
+	getTipsPoolSizesFunc        GetTipsPoolSizesFunc
+	requestTipsFunc             RequestTipsFunc
+	isNodeHealthyFunc           IsNodeHealthyFunc
+	sendBlockFunc               SendBlockFunc
+	blockMetadataFunc           BlockMetadataFunc
+	spammerMetrics              *Metrics
+	cpuUsageUpdater             *CPUUsageUpdater
+	daemon                      hivedaemon.Daemon
 
 	indexer nodeclient.IndexerClient
 
@@ -183,13 +200,23 @@ func New(
 	protocolParametersFunc ProtocolParametersFunc,
 	nodeClient *nodeclient.Client,
 	wallet *hdwallet.HDWallet,
-	valueSpamEnabled bool,
 	bpsRateLimit float64,
 	cpuMaxUsage float64,
 	workersCount int,
 	message string,
 	tag string,
 	tagSemiLazy string,
+	valueSpamEnabled bool,
+	valueSpamSendBasicOutput bool,
+	valueSpamCollectBasicOutput bool,
+	valueSpamCreateAlias bool,
+	valueSpamDestroyAlias bool,
+	valueSpamCreateFoundry bool,
+	valueSpamDestroyFoundry bool,
+	valueSpamMintNativeToken bool,
+	valueSpamMeltNativeToken bool,
+	valueSpamCreateNFT bool,
+	valueSpamDestroyNFT bool,
 	nonLazyTipsThreshold uint32,
 	semiLazyTipsThreshold uint32,
 	refreshTipsInterval time.Duration,
@@ -207,7 +234,7 @@ func New(
 		workersCount = runtime.NumCPU() - 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var err error
@@ -228,35 +255,54 @@ func New(
 		log.Infof("Address for Sender: %s", accountSender.AddressBech32())
 		log.Infof("Address for Receiver: %s", accountReceiver.AddressBech32())
 
-		indexer, err = nodeClient.Indexer(ctx)
-		if err != nil {
-			return nil, err
+		for {
+			indexer, err = nodeClient.Indexer(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil, err
+				}
+				time.Sleep(time.Second)
+
+				continue
+			}
+
+			break
 		}
 	}
 
 	return &Spammer{
-		WrappedLogger:          logger.NewWrappedLogger(log),
-		protocolParametersFunc: protocolParametersFunc,
-		nodeClient:             nodeClient,
-		valueSpamEnabled:       valueSpamEnabled,
-		bpsRateLimit:           bpsRateLimit,
-		cpuMaxUsage:            cpuMaxUsage,
-		workersCount:           workersCount,
-		message:                message,
-		tag:                    tag,
-		tagSemiLazy:            tagSemiLazy,
-		nonLazyTipsThreshold:   nonLazyTipsThreshold,
-		semiLazyTipsThreshold:  semiLazyTipsThreshold,
-		refreshTipsInterval:    refreshTipsInterval,
-		getTipsPoolSizesFunc:   getTipsPoolSizesFunc,
-		requestTipsFunc:        requestTipsFunc,
-		isNodeHealthyFunc:      isNodeHealthyFunc,
-		sendBlockFunc:          sendBlockFunc,
-		blockMetadataFunc:      blockMetadataFunc,
-		spammerMetrics:         spammerMetrics,
-		cpuUsageUpdater:        cpuUsageUpdater,
-		daemon:                 daemon,
-		indexer:                indexer,
+		WrappedLogger:               logger.NewWrappedLogger(log),
+		protocolParametersFunc:      protocolParametersFunc,
+		nodeClient:                  nodeClient,
+		bpsRateLimit:                bpsRateLimit,
+		cpuMaxUsage:                 cpuMaxUsage,
+		workersCount:                workersCount,
+		message:                     message,
+		tag:                         tag,
+		tagSemiLazy:                 tagSemiLazy,
+		valueSpamEnabled:            valueSpamEnabled,
+		valueSpamSendBasicOutput:    valueSpamSendBasicOutput,
+		valueSpamCollectBasicOutput: valueSpamCollectBasicOutput,
+		valueSpamCreateAlias:        valueSpamCreateAlias,
+		valueSpamDestroyAlias:       valueSpamDestroyAlias,
+		valueSpamCreateFoundry:      valueSpamCreateFoundry,
+		valueSpamDestroyFoundry:     valueSpamDestroyFoundry,
+		valueSpamMintNativeToken:    valueSpamMintNativeToken,
+		valueSpamMeltNativeToken:    valueSpamMeltNativeToken,
+		valueSpamCreateNFT:          valueSpamCreateNFT,
+		valueSpamDestroyNFT:         valueSpamDestroyNFT,
+		nonLazyTipsThreshold:        nonLazyTipsThreshold,
+		semiLazyTipsThreshold:       semiLazyTipsThreshold,
+		refreshTipsInterval:         refreshTipsInterval,
+		getTipsPoolSizesFunc:        getTipsPoolSizesFunc,
+		requestTipsFunc:             requestTipsFunc,
+		isNodeHealthyFunc:           isNodeHealthyFunc,
+		sendBlockFunc:               sendBlockFunc,
+		blockMetadataFunc:           blockMetadataFunc,
+		spammerMetrics:              spammerMetrics,
+		cpuUsageUpdater:             cpuUsageUpdater,
+		daemon:                      daemon,
+		indexer:                     indexer,
 		// Events are the events of the spammer
 		Events: &Events{
 			SpamPerformed:         events.NewEvent(SpamStatsCaller),
@@ -343,97 +389,146 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 		return common.ErrMnemonicNotProvided
 	}
 
-	switch s.outputState {
-	case stateBasicOutputCreate:
-		if err := s.basicOutputSend(ctx, s.accountSender, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateBasicOutputSend
+	executed := false
+	for !executed {
+		switch s.outputState {
+		case stateBasicOutputCreate:
+			if s.valueSpamSendBasicOutput {
+				if err := s.basicOutputSend(ctx, s.accountSender, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateBasicOutputSend
 
-	case stateBasicOutputSend:
-		if err := s.basicOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateAliasOutputCreate
+		case stateBasicOutputSend:
+			if s.valueSpamSendBasicOutput {
+				if err := s.basicOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateAliasOutputCreate
 
-	case stateAliasOutputCreate:
-		if err := s.aliasOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateAliasOutputStateTransition
+		case stateAliasOutputCreate:
+			if s.valueSpamCreateAlias {
+				if err := s.aliasOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateAliasOutputStateTransition
 
-	case stateAliasOutputStateTransition:
-		if err := s.aliasOutputStateTransition(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateFoundryOutputCreate
+		case stateAliasOutputStateTransition:
+			if s.valueSpamCreateAlias {
+				if err := s.aliasOutputStateTransition(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateFoundryOutputCreate
 
-	case stateFoundryOutputCreate:
-		if err := s.foundryOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateFoundryOutputMintNativeTokens
+		case stateFoundryOutputCreate:
+			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry {
+				if err := s.foundryOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateFoundryOutputMintNativeTokens
 
-	case stateFoundryOutputMintNativeTokens:
-		if err := s.foundryOutputMintNativeTokens(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateBasicOutputSendNativeTokens
+		case stateFoundryOutputMintNativeTokens:
+			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken {
+				if err := s.foundryOutputMintNativeTokens(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateBasicOutputSendNativeTokens
 
-	case stateBasicOutputSendNativeTokens:
-		if err := s.basicOutputSendNativeTokens(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateAliasOutputGovernanceTransition
+		case stateBasicOutputSendNativeTokens:
+			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken {
+				if err := s.basicOutputSendNativeTokens(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateAliasOutputGovernanceTransition
 
-	case stateAliasOutputGovernanceTransition:
-		if err := s.aliasOutputGovernanceTransition(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateFoundryOutputMeltNativeTokens
+		case stateAliasOutputGovernanceTransition:
+			if s.valueSpamCreateAlias {
+				if err := s.aliasOutputGovernanceTransition(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateFoundryOutputMeltNativeTokens
 
-	case stateFoundryOutputMeltNativeTokens:
-		if err := s.foundryOutputMeltNativeTokens(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateFoundryOutputDestroy
+		case stateFoundryOutputMeltNativeTokens:
+			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken && s.valueSpamMeltNativeToken {
+				if err := s.foundryOutputMeltNativeTokens(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateFoundryOutputDestroy
 
-	case stateFoundryOutputDestroy:
-		if err := s.foundryOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateAliasOutputDestroy
+		case stateFoundryOutputDestroy:
+			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamDestroyFoundry && (!s.valueSpamMintNativeToken || s.valueSpamMeltNativeToken) {
+				if err := s.foundryOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateAliasOutputDestroy
 
-	case stateAliasOutputDestroy:
-		if err := s.aliasOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateNFTOutputCreate
+		case stateAliasOutputDestroy:
+			if s.valueSpamCreateAlias && s.valueSpamDestroyAlias && ((!s.valueSpamCreateFoundry || s.valueSpamDestroyFoundry) && (!s.valueSpamMintNativeToken || s.valueSpamMeltNativeToken)) {
+				if err := s.aliasOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateNFTOutputCreate
 
-	case stateNFTOutputCreate:
-		if err := s.nftOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateNFTOutputSend
+		case stateNFTOutputCreate:
+			if s.valueSpamCreateNFT {
+				if err := s.nftOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateNFTOutputSend
 
-	case stateNFTOutputSend:
-		if err := s.nftOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateNFTOutputDestroy
+		case stateNFTOutputSend:
+			if s.valueSpamCreateNFT {
+				if err := s.nftOutputSend(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateNFTOutputDestroy
 
-	case stateNFTOutputDestroy:
-		if err := s.nftOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
-		}
-		s.outputState = stateBasicOutputCollect
+		case stateNFTOutputDestroy:
+			if s.valueSpamCreateNFT && s.valueSpamDestroyNFT {
+				if err := s.nftOutputDestroy(ctx, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.outputState = stateBasicOutputCollect
 
-	case stateBasicOutputCollect:
-		if err := s.basicOutputSend(ctx, s.accountReceiver, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
-			logDebugStateErrorFunc(s.outputState, err)
+		case stateBasicOutputCollect:
+			if s.valueSpamCollectBasicOutput {
+				if err := s.basicOutputSend(ctx, s.accountReceiver, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+					logDebugStateErrorFunc(s.outputState, err)
+				}
+				executed = true
+			}
+			s.cleanupOwnership()
+			s.outputState = stateBasicOutputCreate
+			s.LogDebug("spam cycle complete")
 		}
-		s.outputState = stateBasicOutputCreate
-		s.LogDebug("spam cycle complete")
 	}
 
 	return nil
@@ -861,8 +956,8 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 	if conflicting {
 		// there was a conflict in the chain
 		// forget all known outputs
-		s.accountSender.ResetUTXOs()
-		s.accountReceiver.ResetUTXOs()
+		s.accountSender.ResetOutputs()
+		s.accountReceiver.ResetOutputs()
 
 		// recreate the pending transactions map
 		s.pendingTransactionsMap = make(map[iotago.BlockID]*pendingTransaction)
@@ -938,18 +1033,32 @@ func (s *Spammer) getCurrentSpammerLedgerState() error {
 		return nodeclient.ErrIndexerPluginNotAvailable
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ts := time.Now()
+
+	ctx, cancel := context.WithTimeout(context.Background(), IndexerQueryTimeout)
 	defer cancel()
 
+	// only query basic outputs with native tokens if we want to melt them
+	allowNativeTokens := s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken && s.valueSpamMeltNativeToken
+
 	// get all known outputs from the indexer (sender)
-	if err := s.accountSender.QueryOutputsFromIndexer(ctx, s.indexer); err != nil {
+	if err := s.accountSender.QueryOutputsFromIndexer(ctx, s.indexer, allowNativeTokens, true, s.valueSpamCreateAlias, s.valueSpamCreateAlias, s.valueSpamCreateNFT, IndexerQueryMaxResults); err != nil {
 		return err
 	}
 
+	receiversAliasOutputsUsed := s.valueSpamCreateAlias && s.valueSpamDestroyAlias && ((!s.valueSpamCreateFoundry || s.valueSpamDestroyFoundry) && (!s.valueSpamMintNativeToken || s.valueSpamMeltNativeToken))
+
 	// get all known outputs from the indexer (receiver)
-	if err := s.accountReceiver.QueryOutputsFromIndexer(ctx, s.indexer); err != nil {
+	if err := s.accountReceiver.QueryOutputsFromIndexer(ctx, s.indexer, allowNativeTokens, s.valueSpamCollectBasicOutput, receiversAliasOutputsUsed, receiversAliasOutputsUsed, s.valueSpamDestroyNFT, IndexerQueryMaxResults); err != nil {
 		return err
 	}
+
+	s.LogDebugf(`getCurrentSpammerLedgerState finised, took: %v
+	outputs sender:   basic: %d, alias: %d, foundry: %d, nft: %d
+	outputs receiver: basic: %d, alias: %d, foundry: %d, nft: %d`, time.Since(ts).Truncate(time.Millisecond),
+		s.accountSender.BasicOutputsCount(), s.accountSender.AliasOutputsCount(), s.accountSender.FoundryOutputsCount(), s.accountSender.NFTOutputsCount(),
+		s.accountReceiver.BasicOutputsCount(), s.accountReceiver.AliasOutputsCount(), s.accountReceiver.FoundryOutputsCount(), s.accountReceiver.NFTOutputsCount(),
+	)
 
 	return nil
 }
@@ -1066,8 +1175,14 @@ func (s *Spammer) BuildTaggedDataBlockAndSend(ctx context.Context) error {
 	timeStart := time.Now()
 	// we only use 1 thread to do the PoW for tagged data spam blocks, because several threads run in parallel
 	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), 1, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
+		selectTipsCtx, selectTipsCancel := context.WithTimeout(ctx, s.refreshTipsInterval)
+		defer selectTipsCancel()
+
+		mergedCtx, mergedCancel := contextutils.MergeContexts(ctx, selectTipsCtx)
+		defer mergedCancel()
+
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
-		_, refreshedTips, _, err := s.selectSpammerTips(ctx, iotago.BlockIDs{})
+		_, refreshedTips, _, err := s.selectSpammerTips(mergedCtx, iotago.BlockIDs{})
 
 		return refreshedTips, err
 	}); err != nil {
@@ -1272,8 +1387,14 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	timeStart := time.Now()
 	// we only use "workersCount" threads in parallel to do the PoW for transaction spam blocks, because only one spammer thread runs in parallel.
 	if _, err := pow.DoPoW(ctx, block, float64(protocolParams.MinPoWScore), s.workersCountRunning, s.refreshTipsInterval, func() (tips iotago.BlockIDs, err error) {
+		selectTipsCtx, selectTipsCancel := context.WithTimeout(ctx, s.refreshTipsInterval)
+		defer selectTipsCancel()
+
+		mergedCtx, mergedCancel := contextutils.MergeContexts(ctx, selectTipsCtx)
+		defer mergedCancel()
+
 		// refresh tips of the spammer if PoW takes longer than a configured duration.
-		_, refreshedTips, _, err := s.selectSpammerTips(ctx, spamBuilder.requiredTips)
+		_, refreshedTips, _, err := s.selectSpammerTips(mergedCtx, spamBuilder.requiredTips)
 
 		return refreshedTips, err
 	}); err != nil {
@@ -1400,4 +1521,41 @@ func (s *Spammer) bookCreatedOutputs(createdOutputs []UTXOInterface, basicOutput
 	}
 
 	return nil
+}
+
+// cleanupOwnership removes tracking of outputs if we don't destroy them to keep the memory usage of the spammer bounded.
+func (s *Spammer) cleanupOwnership() {
+
+	if !(s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken) {
+		// sender's basic outputs with native tokens are never used => cleanup
+		s.accountSender.CleanupOwnershipBasicOutputs()
+	}
+
+	if !s.valueSpamCollectBasicOutput {
+		// receiver's basic outputs are never used => cleanup
+		s.accountReceiver.ResetBasicOutputs()
+	}
+
+	if !s.valueSpamCreateAlias {
+		// sender's alias outputs are never used => cleanup
+		s.accountSender.ResetAliasOutputs()
+	} else {
+		// there should be no foundry outputs in the sender's alias outputs anyway => cleanup
+		s.accountSender.ResetFoundryOutputs()
+	}
+
+	if !(s.valueSpamCreateAlias && s.valueSpamDestroyAlias && ((!s.valueSpamCreateFoundry || s.valueSpamDestroyFoundry) && (!s.valueSpamMintNativeToken || s.valueSpamMeltNativeToken))) {
+		// receiver's alias outputs are never used => cleanup
+		s.accountReceiver.ResetAliasOutputs()
+	}
+
+	if !s.valueSpamCreateNFT {
+		// sender's NFT outputs are never used => cleanup
+		s.accountSender.ResetNFTOutputs()
+	}
+
+	if !s.valueSpamDestroyNFT {
+		// receiver's NFT outputs are never used => cleanup
+		s.accountReceiver.ResetNFTOutputs()
+	}
 }

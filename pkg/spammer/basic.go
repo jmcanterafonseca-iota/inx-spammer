@@ -10,10 +10,10 @@ import (
 )
 
 // collects Basic outputs from a given address.
-func collectBasicOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
+func collectBasicOutputsQuery(addressBech32 string, allowNativeTokens bool) nodeclient.IndexerQuery {
 	falseCondition := false
 
-	return &nodeclient.BasicOutputsQuery{
+	basicOutputsQuery := &nodeclient.BasicOutputsQuery{
 		AddressBech32: addressBech32,
 		IndexerExpirationParas: nodeclient.IndexerExpirationParas{
 			HasExpiration: &falseCondition,
@@ -25,6 +25,14 @@ func collectBasicOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 			HasStorageDepositReturn: &falseCondition,
 		},
 	}
+
+	if !allowNativeTokens {
+		basicOutputsQuery.IndexerNativeTokenParas = nodeclient.IndexerNativeTokenParas{
+			HasNativeTokens: &falseCondition,
+		}
+	}
+
+	return basicOutputsQuery
 }
 
 func (s *Spammer) basicOutputSend(ctx context.Context, accountSender *LedgerAccount, accountReceiver *LedgerAccount, additionalTag ...string) error {
