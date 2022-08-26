@@ -242,6 +242,7 @@ func run() error {
 
 		CoreComponent.LogInfo("Starting API server...")
 
+		//nolint:contextcheck // false positive
 		_ = spammer.NewServer(deps.Spammer, e.Group(""))
 
 		go func() {
@@ -263,10 +264,13 @@ func run() error {
 		}
 
 		shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCtxCancel()
+
+		//nolint:contextcheck // false positive
 		if err := e.Shutdown(shutdownCtx); err != nil {
 			CoreComponent.LogWarn(err)
 		}
-		shutdownCtxCancel()
+
 		CoreComponent.LogInfo("Stopping API ... done")
 	}, daemon.PriorityStopSpammerAPI); err != nil {
 		CoreComponent.LogPanicf("failed to start worker: %s", err)

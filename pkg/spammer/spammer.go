@@ -35,7 +35,7 @@ const (
 
 const (
 	IndexerQueryMaxResults = 1000
-	IndexerQueryTimeout    = 30 * time.Second
+	IndexerQueryTimeout    = 15 * time.Second
 )
 
 type outputState byte
@@ -234,7 +234,7 @@ func New(
 		workersCount = runtime.NumCPU() - 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), IndexerQueryTimeout)
 	defer cancel()
 
 	var err error
@@ -563,8 +563,8 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 		spammerWorkerCount = 1
 	}
 
-	var rateLimitChannel chan struct{} = nil
-	var rateLimitAbortSignal chan struct{} = nil
+	var rateLimitChannel chan struct{}
+	var rateLimitAbortSignal chan struct{}
 	currentProcessID := s.processID.Load()
 
 	if bpsRateLimit != 0.0 {
@@ -797,7 +797,7 @@ func (s *Spammer) Start(valueSpamEnabled *bool, bpsRateLimit *float64, cpuMaxUsa
 		workersCountCfg = 1
 	}
 
-	if err := s.getCurrentSpammerLedgerState(); err != nil {
+	if err := s.getCurrentSpammerLedgerState(context.Background()); err != nil {
 		return err
 	}
 
@@ -955,20 +955,12 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 
 	if conflicting {
 		// there was a conflict in the chain
-		// forget all known outputs
-		s.accountSender.ResetOutputs()
-		s.accountReceiver.ResetOutputs()
-
-		// recreate the pending transactions map
-		s.pendingTransactionsMap = make(map[iotago.BlockID]*pendingTransaction)
+		s.resetSpammerState()
 
 		// wait until the indexer got updated
 		if err := s.waitForIndexerUpdate(ctx, msIndex); err != nil {
 			return err
 		}
-
-		// reset the state if there was a conflict
-		s.outputState = stateBasicOutputCreate
 	} else {
 		// we only allow the spammer to create new transactions if there was no conflict in the last milestone.
 		s.currentLedgerMilestoneIndex = s.ledgerMilestoneIndex.Load()
@@ -980,12 +972,28 @@ func (s *Spammer) ApplyNewLedgerUpdate(ctx context.Context, msIndex iotago.Miles
 	// but there are no new outputs created by the spammer.
 	// in this case we query the indexer again to get the latest state.
 	if s.accountSender.Empty() && s.accountReceiver.Empty() && s.isValueSpamEnabled {
-		if err := s.getCurrentSpammerLedgerState(); err != nil {
-			return err
+		if err := s.getCurrentSpammerLedgerState(ctx); err != nil {
+			// there was an error getting the current ledger state
+			s.resetSpammerState()
+
+			s.LogWarnf("failed to get current spammer ledger state: %s", err.Error())
 		}
 	}
 
 	return nil
+}
+
+// resetSpammerState resets the spammer state in case of a conflict.
+func (s *Spammer) resetSpammerState() {
+	// forget all known outputs
+	s.accountSender.ResetOutputs()
+	s.accountReceiver.ResetOutputs()
+
+	// recreate the pending transactions map
+	s.pendingTransactionsMap = make(map[iotago.BlockID]*pendingTransaction)
+
+	// reset the state if there was a conflict
+	s.outputState = stateBasicOutputCreate
 }
 
 // waitForIndexerUpdate waits until the indexer got updated to the expected milestone index.
@@ -995,7 +1003,7 @@ func (s *Spammer) waitForIndexerUpdate(ctx context.Context, msIndex iotago.Miles
 		return nodeclient.ErrIndexerPluginNotAvailable
 	}
 
-	ctxWaitForUpdate, cancelWaitForUpdate := context.WithTimeout(ctx, 10*time.Second)
+	ctxWaitForUpdate, cancelWaitForUpdate := context.WithTimeout(ctx, IndexerQueryTimeout)
 	defer cancelWaitForUpdate()
 
 	for ctxWaitForUpdate.Err() == nil {
@@ -1023,7 +1031,7 @@ func (s *Spammer) waitForIndexerUpdate(ctx context.Context, msIndex iotago.Miles
 	return ctxWaitForUpdate.Err()
 }
 
-func (s *Spammer) getCurrentSpammerLedgerState() error {
+func (s *Spammer) getCurrentSpammerLedgerState(ctx context.Context) error {
 
 	if s.accountSender == nil || s.accountReceiver == nil {
 		return nil
@@ -1035,25 +1043,25 @@ func (s *Spammer) getCurrentSpammerLedgerState() error {
 
 	ts := time.Now()
 
-	ctx, cancel := context.WithTimeout(context.Background(), IndexerQueryTimeout)
-	defer cancel()
+	ctxQuery, cancelQuery := context.WithTimeout(ctx, IndexerQueryTimeout)
+	defer cancelQuery()
 
 	// only query basic outputs with native tokens if we want to melt them
 	allowNativeTokens := s.valueSpamCreateAlias && s.valueSpamCreateFoundry && s.valueSpamMintNativeToken && s.valueSpamMeltNativeToken
 
 	// get all known outputs from the indexer (sender)
-	if err := s.accountSender.QueryOutputsFromIndexer(ctx, s.indexer, allowNativeTokens, true, s.valueSpamCreateAlias, s.valueSpamCreateAlias, s.valueSpamCreateNFT, IndexerQueryMaxResults); err != nil {
+	if err := s.accountSender.QueryOutputsFromIndexer(ctxQuery, s.indexer, allowNativeTokens, true, s.valueSpamCreateAlias, s.valueSpamCreateAlias, s.valueSpamCreateNFT, IndexerQueryMaxResults); err != nil {
 		return err
 	}
 
 	receiversAliasOutputsUsed := s.valueSpamCreateAlias && s.valueSpamDestroyAlias && ((!s.valueSpamCreateFoundry || s.valueSpamDestroyFoundry) && (!s.valueSpamMintNativeToken || s.valueSpamMeltNativeToken))
 
 	// get all known outputs from the indexer (receiver)
-	if err := s.accountReceiver.QueryOutputsFromIndexer(ctx, s.indexer, allowNativeTokens, s.valueSpamCollectBasicOutput, receiversAliasOutputsUsed, receiversAliasOutputsUsed, s.valueSpamDestroyNFT, IndexerQueryMaxResults); err != nil {
+	if err := s.accountReceiver.QueryOutputsFromIndexer(ctxQuery, s.indexer, allowNativeTokens, s.valueSpamCollectBasicOutput, receiversAliasOutputsUsed, receiversAliasOutputsUsed, s.valueSpamDestroyNFT, IndexerQueryMaxResults); err != nil {
 		return err
 	}
 
-	s.LogDebugf(`getCurrentSpammerLedgerState finised, took: %v
+	s.LogDebugf(`getCurrentSpammerLedgerState finished, took: %v
 	outputs sender:   basic: %d, alias: %d, foundry: %d, nft: %d
 	outputs receiver: basic: %d, alias: %d, foundry: %d, nft: %d`, time.Since(ts).Truncate(time.Millisecond),
 		s.accountSender.BasicOutputsCount(), s.accountSender.AliasOutputsCount(), s.accountSender.FoundryOutputsCount(), s.accountSender.NFTOutputsCount(),
@@ -1223,7 +1231,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	senderAddress := spamBuilder.accountSender.Address()
 
 	// add all inputs
-	var remainder int64 = 0
+	var remainder int64
 	consumedInputIDs := iotago.OutputIDs{}
 	for _, input := range spamBuilder.consumedInputs {
 		remainder += int64(input.Output().Deposit())
@@ -1313,7 +1321,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	}
 
 	// add all outputs and calculate the remainder
-	var remainderOutputIndex uint16 = 0
+	var remainderOutputIndex uint16
 	for i, outputWithOwnership := range spamBuilder.createdOutputs {
 		output := outputWithOwnership.Output
 
@@ -1404,6 +1412,10 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 
 	blockID, err := s.sendBlockFunc(ctx, block)
 	if err != nil {
+		// there was an error during sending a transaction
+		// it is high likely that something is non-solid or below max depth
+		s.resetSpammerState()
+
 		return nil, nil, fmt.Errorf("send transaction block failed, error: %w", err)
 	}
 
@@ -1423,7 +1435,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 
 	createdOutputs := make([]UTXOInterface, 0)
 
-	var outputIndex uint16 = 0
+	var outputIndex uint16
 	for _, outputWithOwnership := range spamBuilder.createdOutputs {
 		output := outputWithOwnership.Output
 		if output.Type() == iotago.OutputAlias {

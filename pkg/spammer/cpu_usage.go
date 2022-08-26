@@ -47,6 +47,7 @@ func (c *CPUUsageUpdater) Run(ctx context.Context) {
 			return
 		}
 
+		//nolint:contextcheck // false positive
 		cpuUsagePSutil, err := cpu.Percent(c.sampleTime, false)
 		c.Lock()
 		if err != nil {
