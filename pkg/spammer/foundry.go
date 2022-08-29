@@ -194,6 +194,7 @@ func (s *Spammer) foundryOutputMintNativeTokens(ctx context.Context, accountSend
 		// create the new alias output
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
+		transitionedAliasOutput.StateIndex++
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
 		}
@@ -366,6 +367,7 @@ func (s *Spammer) foundryOutputMeltNativeTokens(ctx context.Context, accountSend
 		// create the new alias output
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
+		transitionedAliasOutput.StateIndex++
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
 		}
@@ -542,6 +544,7 @@ func (s *Spammer) foundryOutputDestroy(ctx context.Context, accountSender *Ledge
 		// create the new alias output
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
+		transitionedAliasOutput.StateIndex++
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
 		}
