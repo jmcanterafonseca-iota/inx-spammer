@@ -112,12 +112,12 @@ func provide(c *dig.Container) error {
 	}
 
 	if err := c.Provide(func(deps spammerDeps) (*spammer.Spammer, error) {
-		CoreComponent.LogInfo("Setting up spammer...")
+		CoreComponent.LogInfo("Setting up spammer ...")
 
 		mnemonic, err := loadMnemonicFromEnvironment("SPAMMER_MNEMONIC")
 		if err != nil {
 			if ParamsSpammer.ValueSpam.Enabled {
-				CoreComponent.LogPanicf("value spam enabled but loading mnemonic seed failed, err: %s", err)
+				CoreComponent.LogErrorfAndExit("value spam enabled but loading mnemonic seed failed, err: %s", err)
 			}
 		}
 
@@ -246,7 +246,7 @@ func run() error {
 
 		e := httpserver.NewEcho(CoreComponent.Logger(), nil, ParamsRestAPI.DebugRequestLoggerEnabled)
 
-		CoreComponent.LogInfo("Starting API server...")
+		CoreComponent.LogInfo("Starting API server ...")
 
 		//nolint:contextcheck // false positive
 		_ = spammer.NewServer(deps.Spammer, e.Group(""))
@@ -254,17 +254,18 @@ func run() error {
 		go func() {
 			CoreComponent.LogInfof("You can now access the API using: http://%s", ParamsRestAPI.BindAddress)
 			if err := e.Start(ParamsRestAPI.BindAddress); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				CoreComponent.LogPanicf("Stopped REST-API server due to an error (%s)", err)
+				CoreComponent.LogErrorfAndExit("Stopped REST-API server due to an error (%s)", err)
 			}
 		}()
 
 		ctxRegister, cancelRegister := context.WithTimeout(ctx, 5*time.Second)
-		defer cancelRegister()
 
 		if err := deps.NodeBridge.RegisterAPIRoute(ctxRegister, APIRoute, ParamsRestAPI.BindAddress); err != nil {
-			CoreComponent.LogWarnf("Registering INX api route failed: %s", err)
+			CoreComponent.LogErrorfAndExit("Registering INX api route failed: %s", err)
 		}
+		cancelRegister()
 
+		CoreComponent.LogInfo("Starting API server ... done")
 		<-ctx.Done()
 		CoreComponent.LogInfo("Stopping API ...")
 

@@ -637,7 +637,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 
 		spammerIndex := spammerCnt.Inc()
 
-		s.LogInfof("Starting Spammer %d... done", spammerIndex)
+		s.LogInfof("Starting Spammer %d ... done", spammerIndex)
 
 	spammerLoop:
 		for {
@@ -694,8 +694,8 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 			}
 		}
 
-		s.LogInfof("Stopping Spammer %d...", spammerIndex)
-		s.LogInfof("Stopping Spammer %d... done", spammerIndex)
+		s.LogInfof("Stopping Spammer %d ...", spammerIndex)
+		s.LogInfof("Stopping Spammer %d ... done", spammerIndex)
 	}
 
 	spammerCnt := atomic.NewInt32(0)
