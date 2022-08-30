@@ -81,7 +81,10 @@ func provide(c *dig.Container) error {
 	}
 
 	fetchMetadata := func(blockID iotago.BlockID) (*spammer.Metadata, error) {
-		metadata, err := deps.NodeBridge.BlockMetadata(blockID)
+		ctx, cancel := context.WithTimeout(CoreComponent.Daemon().ContextStopped(), 5*time.Second)
+		defer cancel()
+
+		metadata, err := deps.NodeBridge.BlockMetadata(ctx, blockID)
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok && st.Code() == codes.NotFound {
@@ -154,7 +157,10 @@ func provide(c *dig.Container) error {
 			deps.TipPoolListener.GetTipsPoolSizes,
 			deps.NodeBridge.RequestTips,
 			func() (bool, error) {
-				status, err := deps.NodeBridge.NodeStatus()
+				ctx, cancel := context.WithTimeout(CoreComponent.Daemon().ContextStopped(), 5*time.Second)
+				defer cancel()
+
+				status, err := deps.NodeBridge.NodeStatus(ctx)
 				if err != nil {
 					return false, err
 				}
@@ -252,15 +258,22 @@ func run() error {
 			}
 		}()
 
-		if err := deps.NodeBridge.RegisterAPIRoute(APIRoute, ParamsRestAPI.BindAddress); err != nil {
-			CoreComponent.LogPanicf("Registering INX api route failed, error: %s", err)
+		ctxRegister, cancelRegister := context.WithTimeout(ctx, 5*time.Second)
+		defer cancelRegister()
+
+		if err := deps.NodeBridge.RegisterAPIRoute(ctxRegister, APIRoute, ParamsRestAPI.BindAddress); err != nil {
+			CoreComponent.LogWarnf("Registering INX api route failed: %s", err)
 		}
 
 		<-ctx.Done()
 		CoreComponent.LogInfo("Stopping API ...")
 
-		if err := deps.NodeBridge.UnregisterAPIRoute(APIRoute); err != nil {
-			CoreComponent.LogWarnf("Unregistering INX api route failed, error: %s", err)
+		ctxUnregister, cancelUnregister := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelUnregister()
+
+		//nolint:contextcheck // false positive
+		if err := deps.NodeBridge.UnregisterAPIRoute(ctxUnregister, APIRoute); err != nil {
+			CoreComponent.LogWarnf("Unregistering INX api route failed: %s", err)
 		}
 
 		shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 5*time.Second)

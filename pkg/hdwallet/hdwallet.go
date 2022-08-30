@@ -7,6 +7,7 @@ import (
 	"github.com/wollac/iota-crypto-demo/pkg/bip32path"
 	"github.com/wollac/iota-crypto-demo/pkg/bip39"
 	"github.com/wollac/iota-crypto-demo/pkg/slip10"
+	"github.com/wollac/iota-crypto-demo/pkg/slip10/eddsa"
 
 	iotago "github.com/iotaledger/iota.go/v3"
 )
@@ -58,13 +59,13 @@ func (hd *HDWallet) keyPair(acount uint64, isChange bool, addressIndex uint64) (
 		return nil, nil, fmt.Errorf("bip32 parse path failed: %w", err)
 	}
 
-	curve := slip10.Ed25519()
+	curve := eddsa.Ed25519()
 	key, err := slip10.DeriveKeyFromPath(hd.seed[:MnemonicSeedSize], curve, path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("splip10 derive key failed: %w", err)
 	}
 
-	pubKey, privKey := slip10.Ed25519Key(key)
+	pubKey, privKey := key.Key.(eddsa.Seed).Ed25519Key()
 
 	return ed25519.PrivateKey(privKey), ed25519.PublicKey(pubKey), nil
 }

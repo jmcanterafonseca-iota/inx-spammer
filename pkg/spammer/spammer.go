@@ -724,9 +724,7 @@ func (s *Spammer) resetSpammerStats() {
 	s.spammerStartTime = time.Time{}
 
 	// clear the metrics heap
-	for s.spammerAvgHeap.Len() > 0 {
-		s.spammerAvgHeap.Pop()
-	}
+	s.spammerAvgHeap.Clear()
 }
 
 func (s *Spammer) IsRunning() bool {
