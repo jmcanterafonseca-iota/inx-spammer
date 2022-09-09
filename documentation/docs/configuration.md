@@ -135,10 +135,11 @@ Example:
 
 ## <a id="restapi"></a> 5. RestAPI
 
-| Name                      | Description                                               | Type    | Default value    |
-| ------------------------- | --------------------------------------------------------- | ------- | ---------------- |
-| bindAddress               | The bind address on which the Spammer HTTP server listens | string  | "localhost:9092" |
-| debugRequestLoggerEnabled | Whether the debug logging for requests should be enabled  | boolean | false            |
+| Name                      | Description                                                                             | Type    | Default value    |
+| ------------------------- | --------------------------------------------------------------------------------------- | ------- | ---------------- |
+| bindAddress               | The bind address on which the Spammer HTTP server listens                               | string  | "localhost:9092" |
+| advertiseAddress          | The address of the Spammer HTTP server which is advertised to the INX Server (optional) | string  | ""               |
+| debugRequestLoggerEnabled | Whether the debug logging for requests should be enabled                                | boolean | false            |
 
 Example:
 
@@ -146,6 +147,7 @@ Example:
   {
     "restAPI": {
       "bindAddress": "localhost:9092",
+      "advertiseAddress": "",
       "debugRequestLoggerEnabled": false
     }
   }

@@ -50,10 +50,12 @@ type ParametersSpammer struct {
 	}
 }
 
-// ParametersRestAPI contains the definition of the parameters used by REST API.
+// ParametersRestAPI contains the definition of the parameters used by the Spammer HTTP server.
 type ParametersRestAPI struct {
 	// BindAddress defines the bind address on which the Spammer HTTP server listens.
 	BindAddress string `default:"localhost:9092" usage:"the bind address on which the Spammer HTTP server listens"`
+	// AdvertiseAddress defines the address of the Spammer HTTP server which is advertised to the INX Server (optional).
+	AdvertiseAddress string `default:"" usage:"the address of the Spammer HTTP server which is advertised to the INX Server (optional)"`
 	// DebugRequestLoggerEnabled defines whether the debug logging for requests should be enabled
 	DebugRequestLoggerEnabled bool `default:"false" usage:"whether the debug logging for requests should be enabled"`
 }

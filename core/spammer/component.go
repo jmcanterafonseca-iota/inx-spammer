@@ -260,7 +260,12 @@ func run() error {
 
 		ctxRegister, cancelRegister := context.WithTimeout(ctx, 5*time.Second)
 
-		if err := deps.NodeBridge.RegisterAPIRoute(ctxRegister, APIRoute, ParamsRestAPI.BindAddress); err != nil {
+		advertisedAddress := ParamsRestAPI.BindAddress
+		if ParamsRestAPI.AdvertiseAddress != "" {
+			advertisedAddress = ParamsRestAPI.AdvertiseAddress
+		}
+
+		if err := deps.NodeBridge.RegisterAPIRoute(ctxRegister, APIRoute, advertisedAddress); err != nil {
 			CoreComponent.LogErrorfAndExit("Registering INX api route failed: %s", err)
 		}
 		cancelRegister()

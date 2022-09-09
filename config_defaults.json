@@ -28,6 +28,7 @@
   },
   "restAPI": {
     "bindAddress": "localhost:9092",
+    "advertiseAddress": "",
     "debugRequestLoggerEnabled": false
   },
   "spammer": {
