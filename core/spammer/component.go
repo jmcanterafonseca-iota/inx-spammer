@@ -156,17 +156,7 @@ func provide(c *dig.Container) error {
 			ParamsPoW.RefreshTipsInterval,
 			deps.TipPoolListener.GetTipsPoolSizes,
 			deps.NodeBridge.RequestTips,
-			func() (bool, error) {
-				ctx, cancel := context.WithTimeout(CoreComponent.Daemon().ContextStopped(), 5*time.Second)
-				defer cancel()
-
-				status, err := deps.NodeBridge.NodeStatus(ctx)
-				if err != nil {
-					return false, err
-				}
-
-				return status.IsHealthy, nil
-			},
+			deps.NodeBridge.IsNodeHealthy,
 			deps.NodeBridge.SubmitBlock,
 			fetchMetadata,
 			deps.SpammerMetrics,

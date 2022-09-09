@@ -95,7 +95,7 @@ var (
 
 type (
 	// IsNodeHealthyFunc returns whether the node is synced, has active peers and its latest milestone is not too old.
-	IsNodeHealthyFunc = func() (bool, error)
+	IsNodeHealthyFunc = func() bool
 
 	// ProtocolParametersFunc returns the latest protocol parameters from the node.
 	ProtocolParametersFunc = func() *iotago.ProtocolParameters
@@ -661,14 +661,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 					}
 				}
 
-				isHealthy, err := s.isNodeHealthyFunc()
-				if err != nil {
-					s.LogWarn(err)
-
-					continue
-				}
-
-				if !isHealthy {
+				if !s.isNodeHealthyFunc() {
 					time.Sleep(time.Second)
 
 					continue
@@ -688,7 +681,7 @@ func (s *Spammer) startSpammerWorkers(valueSpamEnabled bool, bpsRateLimit float6
 				}
 
 				// do spam
-				if err = s.doSpam(ctx, currentProcessID); err != nil {
+				if err := s.doSpam(ctx, currentProcessID); err != nil {
 					continue
 				}
 			}
