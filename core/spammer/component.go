@@ -23,13 +23,15 @@ import (
 	"github.com/iotaledger/inx-spammer/pkg/spammer"
 	inx "github.com/iotaledger/inx/go"
 	iotago "github.com/iotaledger/iota.go/v3"
+	"github.com/iotaledger/iota.go/v3/nodeclient"
 )
 
 const (
 	APIRoute = "spammer/v1"
 
-	cpuUsageSampleTime = 200 * time.Millisecond
-	cpuUsageSleepTime  = 200 * time.Millisecond
+	cpuUsageSampleTime            = 200 * time.Millisecond
+	cpuUsageSleepTime             = 200 * time.Millisecond
+	indexerPluginAvailableTimeout = 30 * time.Second
 )
 
 func init() {
@@ -122,9 +124,18 @@ func provide(c *dig.Container) error {
 		}
 
 		var wallet *hdwallet.HDWallet
+		var indexer nodeclient.IndexerClient
 		if len(mnemonic) > 0 {
 			// new HDWallet instance for address derivation
 			wallet, err = hdwallet.NewHDWallet(deps.NodeBridge.ProtocolParameters(), mnemonic, "", 0, false)
+			if err != nil {
+				return nil, err
+			}
+
+			ctxIndexer, cancelIndexer := context.WithTimeout(CoreComponent.Daemon().ContextStopped(), indexerPluginAvailableTimeout)
+			defer cancelIndexer()
+
+			indexer, err = deps.NodeBridge.Indexer(ctxIndexer)
 			if err != nil {
 				return nil, err
 			}
@@ -132,7 +143,7 @@ func provide(c *dig.Container) error {
 
 		return spammer.New(
 			deps.NodeBridge.ProtocolParameters,
-			deps.NodeBridge.INXNodeClient(),
+			indexer,
 			wallet,
 			ParamsSpammer.BPSRateLimit,
 			ParamsSpammer.CPUMaxUsage,

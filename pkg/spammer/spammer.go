@@ -135,7 +135,6 @@ type Spammer struct {
 	syncutils.RWMutex
 
 	protocolParametersFunc ProtocolParametersFunc
-	nodeClient             *nodeclient.Client
 
 	bpsRateLimit                float64
 	cpuMaxUsage                 float64
@@ -198,7 +197,7 @@ type Spammer struct {
 // New creates a new spammer instance.
 func New(
 	protocolParametersFunc ProtocolParametersFunc,
-	nodeClient *nodeclient.Client,
+	indexer nodeclient.IndexerClient,
 	wallet *hdwallet.HDWallet,
 	bpsRateLimit float64,
 	cpuMaxUsage float64,
@@ -234,12 +233,8 @@ func New(
 		workersCount = runtime.NumCPU() - 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), IndexerQueryTimeout)
-	defer cancel()
-
 	var err error
 	var accountSender, accountReceiver *LedgerAccount
-	var indexer nodeclient.IndexerClient
 	if wallet != nil {
 		// only create accounts if a wallet was provided
 		accountSender, err = NewLedgerAccount(wallet, AddressIndexSender, protocolParametersFunc)
@@ -254,26 +249,11 @@ func New(
 
 		log.Infof("Address for Sender: %s", accountSender.AddressBech32())
 		log.Infof("Address for Receiver: %s", accountReceiver.AddressBech32())
-
-		for {
-			indexer, err = nodeClient.Indexer(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil, err
-				}
-				time.Sleep(time.Second)
-
-				continue
-			}
-
-			break
-		}
 	}
 
 	return &Spammer{
 		WrappedLogger:               logger.NewWrappedLogger(log),
 		protocolParametersFunc:      protocolParametersFunc,
-		nodeClient:                  nodeClient,
 		bpsRateLimit:                bpsRateLimit,
 		cpuMaxUsage:                 cpuMaxUsage,
 		workersCount:                workersCount,
