@@ -4,7 +4,7 @@ import (
 	"github.com/iotaledger/hive.go/core/app"
 	"github.com/iotaledger/hive.go/core/app/core/shutdown"
 	"github.com/iotaledger/hive.go/core/app/plugins/profiling"
-	"github.com/iotaledger/inx-app/inx"
+	"github.com/iotaledger/inx-app/core/inx"
 	"github.com/iotaledger/inx-spammer/core/spammer"
 	"github.com/iotaledger/inx-spammer/plugins/prometheus"
 )
@@ -14,7 +14,7 @@ var (
 	Name = "inx-spammer"
 
 	// Version of the app.
-	Version = "1.0.0-rc.1"
+	Version = "1.0.0-rc.2"
 )
 
 func App() *app.App {
