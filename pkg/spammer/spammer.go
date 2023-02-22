@@ -417,7 +417,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 				}
 				executed = true
 			}
-			s.outputState = stateFoundryOutputCreate
+			s.outputState = stateAliasOutputStateTransition
 
 		case stateFoundryOutputCreate:
 			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry {
