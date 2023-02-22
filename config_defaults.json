@@ -52,7 +52,8 @@
       "mintNativeToken": true,
       "meltNativeToken": true,
       "createNFT": true,
-      "destroyNFT": true
+      "destroyNFT": true,
+      "aliasPayloadSize": 0
     },
     "tipselection": {
       "nonLazyTipsThreshold": 0,

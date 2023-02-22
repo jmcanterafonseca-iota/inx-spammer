@@ -162,6 +162,7 @@ func provide(c *dig.Container) error {
 			ParamsSpammer.ValueSpam.MeltNativeToken,
 			ParamsSpammer.ValueSpam.CreateNFT,
 			ParamsSpammer.ValueSpam.DestroyNFT,
+			ParamsSpammer.ValueSpam.AliasPayloadSize,
 			ParamsSpammer.Tipselection.NonLazyTipsThreshold,
 			ParamsSpammer.Tipselection.SemiLazyTipsThreshold,
 			ParamsPoW.RefreshTipsInterval,
