@@ -97,7 +97,7 @@ func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAc
 	return nil
 }
 
-func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender *LedgerAccount, additionalTag ...string) error {
+func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender *LedgerAccount, payloadSize int, additionalTag ...string) error {
 
 	if len(accountSender.AliasOutputs()) < 1 {
 		return fmt.Errorf("%w: alias outputs", common.ErrNoUTXOAvailable)
@@ -111,10 +111,17 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
 		}
 
+		buf := make([]byte, payloadSize)
+		_, err := rand.Read(buf)
+		if err != nil {
+			panic(fmt.Sprintf("error while generating random string: %s", err))
+		}
+
 		// create the new alias output
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
+		transitionedAliasOutput.StateMetadata = buf
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
 		}

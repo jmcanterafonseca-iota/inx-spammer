@@ -155,7 +155,7 @@ type Spammer struct {
 	valueSpamMeltNativeToken    bool
 	valueSpamCreateNFT          bool
 	valueSpamDestroyNFT         bool
-	valueAliasPayloadSize            int
+	valueAliasPayloadSize       int
 	nonLazyTipsThreshold        uint32
 	semiLazyTipsThreshold       uint32
 	refreshTipsInterval         time.Duration
@@ -411,7 +411,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 
 		case stateAliasOutputStateTransition:
 			if s.valueSpamCreateAlias {
-				if err := s.aliasOutputStateTransition(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
+				if err := s.aliasOutputStateTransition(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
 					logDebugStateErrorFunc(s.outputState, err)
 					return nil
 				}
