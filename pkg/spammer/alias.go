@@ -3,6 +3,7 @@ package spammer
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	"github.com/iotaledger/inx-spammer/pkg/common"
 	iotago "github.com/iotaledger/iota.go/v3"
@@ -21,7 +22,7 @@ func collectAliasOutputsQuery(addressBech32 string) nodeclient.IndexerQuery {
 	}
 }
 
-func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAccount, additionalTag ...string) error {
+func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAccount, payloadSize int, additionalTag ...string) error {
 
 	if len(accountSender.BasicOutputs()) < 1 {
 		return fmt.Errorf("%w: basic outputs", common.ErrNoUTXOAvailable)
@@ -52,6 +53,12 @@ func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAc
 		return fmt.Errorf("%w: filtered basic outputs", common.ErrNoUTXOAvailable)
 	}
 
+	buf := make([]byte, payloadSize)
+	_, err := rand.Read(buf)
+	if err != nil {
+		panic(fmt.Sprintf("error while generating random string: %s", err))
+	}
+
 	// create the new alias output
 	targetAliasOuput := &iotago.AliasOutput{
 		AliasID:    iotago.AliasID{},
@@ -63,6 +70,7 @@ func (s *Spammer) aliasOutputCreate(ctx context.Context, accountSender *LedgerAc
 		ImmutableFeatures: iotago.Features{
 			&iotago.IssuerFeature{Address: accountSender.Address()},
 		},
+		StateMetadata: buf,
 	}
 	if !spamBuilder.AddOutput(targetAliasOuput) {
 		return fmt.Errorf("%w: alias outputs", common.ErrMaxOutputsCountExceeded)

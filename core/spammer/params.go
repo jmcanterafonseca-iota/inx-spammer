@@ -38,6 +38,7 @@ type ParametersSpammer struct {
 		MeltNativeToken    bool `default:"true" usage:"whether to melt native tokens"`
 		CreateNFT          bool `default:"true" usage:"whether to create NFTs"`
 		DestroyNFT         bool `default:"true" usage:"whether to destroy NFTs"`
+		AliasPayloadSize   int `default:0 usage:"Payload size of the Alias"`
 	}
 
 	Tipselection struct {
