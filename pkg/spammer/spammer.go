@@ -417,7 +417,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 			if (s.valueCreateAliasMaxNum <= uint64(len(s.accountSender.AliasOutputs()))) {
 				s.outputState = stateAliasOutputStateTransition
 			} else {
-				s.outputState = stateAliasOutputCreate
+				s.outputState = stateBasicOutputCreate
 			}
 
 		case stateAliasOutputStateTransition:
