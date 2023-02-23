@@ -107,6 +107,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 
 	// We obtain randomly the Output to be involved
 	randomInt := rand.Intn(len(accountSender.AliasOutputs()))
+	s.LogDebugf("Random Output selected: %d", randomInt)
 	outputs := accountSender.AliasOutputs()[randomInt:randomInt]
 
 	_, remainingAliasInputs := consumeInputs(outputs, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
