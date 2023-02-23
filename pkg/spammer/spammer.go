@@ -412,9 +412,9 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 				executed = true
 			}
 			
-			s.LogDebugf("Outputs Created: %d", len(s.accountSender.aliasOutputs))
+			s.LogDebugf("Outputs Created: %d", len(s.accountSender.AliasOutputs()))
 
-			if (s.valueCreateAliasMaxNum <= uint64(len(s.accountSender.aliasOutputs))) {
+			if (s.valueCreateAliasMaxNum <= uint64(len(s.accountSender.AliasOutputs()))) {
 				s.outputState = stateAliasOutputStateTransition
 			} else {
 				s.outputState = stateAliasOutputCreate
