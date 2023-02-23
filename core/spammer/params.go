@@ -39,6 +39,8 @@ type ParametersSpammer struct {
 		CreateNFT          bool `default:"true" usage:"whether to create NFTs"`
 		DestroyNFT         bool `default:"true" usage:"whether to destroy NFTs"`
 		AliasPayloadSize   int  `default:0      usage:"Payload size of the state metadata of aliases"`
+		CreateAliasMaxNum  uint64  `default:1   usage:"Maximum number of Aliases to be created"`
+
 	}
 
 	Tipselection struct {

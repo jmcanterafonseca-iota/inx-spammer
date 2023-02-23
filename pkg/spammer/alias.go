@@ -105,7 +105,11 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
-	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
+	// We obtain randomly the Output to be involved
+	randomInt := rand.Intn(len(accountSender.AliasOutputs()))
+	outputs := accountSender.AliasOutputs()[randomInt:randomInt]
+
+	_, remainingAliasInputs := consumeInputs(outputs, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
 		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
 		if !ok {
 			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))

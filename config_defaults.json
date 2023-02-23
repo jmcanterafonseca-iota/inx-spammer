@@ -53,7 +53,8 @@
       "meltNativeToken": true,
       "createNFT": true,
       "destroyNFT": true,
-      "aliasPayloadSize": 0
+      "aliasPayloadSize": 0,
+      "createAliasMaxNum": 1
     },
     "tipselection": {
       "nonLazyTipsThreshold": 0,

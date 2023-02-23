@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"runtime"
 	"sort"
 	"strings"
@@ -156,6 +157,7 @@ type Spammer struct {
 	valueSpamCreateNFT          bool
 	valueSpamDestroyNFT         bool
 	valueAliasPayloadSize       int
+	valueCreateAliasMaxNum      uint64
 	nonLazyTipsThreshold        uint32
 	semiLazyTipsThreshold       uint32
 	refreshTipsInterval         time.Duration
@@ -220,6 +222,7 @@ func New(
 	valueSpamCreateNFT bool,
 	valueSpamDestroyNFT bool,
 	valueAliasPayloadSize int,
+	valueCreateAliasMaxNum uint64,
 	nonLazyTipsThreshold uint32,
 	semiLazyTipsThreshold uint32,
 	refreshTipsInterval time.Duration,
@@ -349,6 +352,7 @@ func (s *Spammer) selectSpammerTips(ctx context.Context, requiredTips iotago.Blo
 }
 
 func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
+	rand.Seed(time.Now().UnixNano())
 
 	if currentProcessID != s.processID.Load() {
 		return nil
@@ -407,7 +411,11 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 				}
 				executed = true
 			}
-			s.outputState = stateAliasOutputStateTransition
+			if (s.valueCreateAliasMaxNum <= uint64(len(s.accountSender.aliasOutputs))) {
+				s.outputState = stateAliasOutputStateTransition
+			} else {
+				s.outputState = stateAliasOutputCreate
+			}
 
 		case stateAliasOutputStateTransition:
 			if s.valueSpamCreateAlias {
@@ -418,7 +426,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 				executed = true
 			}
 			s.outputState = stateAliasOutputStateTransition
-
+			
 		case stateFoundryOutputCreate:
 			if s.valueSpamCreateAlias && s.valueSpamCreateFoundry {
 				if err := s.foundryOutputCreate(ctx, s.accountSender, outputStateNamesMap[s.outputState]); err != nil {
