@@ -110,7 +110,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 	if s.valueLoopTransitionAlias {
 		// Only one is taken to transition
 		randomInt := rand.Int63n(int64(len(accountSender.AliasOutputs())))
-		s.LogDebugf("Alias # to transition: %", randomInt)
+		s.LogDebugf("Alias # to transition: %d", randomInt)
 		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt:randomInt + 1]
 	}
 	
