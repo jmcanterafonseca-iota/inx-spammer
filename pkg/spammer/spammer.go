@@ -280,6 +280,8 @@ func New(
 		valueSpamCreateNFT:          valueSpamCreateNFT,
 		valueSpamDestroyNFT:         valueSpamDestroyNFT,
 		valueAliasPayloadSize:       valueAliasPayloadSize,
+		valueLoopTransitionAlias:    valueLoopTransitionAlias,
+	    valueLoopTotalAliasNumber:   valueLoopTotalAliasNumber,
 		nonLazyTipsThreshold:        nonLazyTipsThreshold,
 		semiLazyTipsThreshold:       semiLazyTipsThreshold,
 		refreshTipsInterval:         refreshTipsInterval,
