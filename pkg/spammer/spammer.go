@@ -1257,7 +1257,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	var remainder int64
 	consumedInputIDs := iotago.OutputIDs{}
 	s.LogDebugf("Consumed Inputs Length: %d", len(spamBuilder.consumedInputs))
-	
+
 	for _, input := range spamBuilder.consumedInputs {
 		remainder += int64(input.Output().Deposit())
 
@@ -1281,6 +1281,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputAlias:
+			s.LogDebug("It is an Alias Output!!!!")
 			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.AliasOutput)
 
