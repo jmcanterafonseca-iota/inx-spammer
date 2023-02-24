@@ -1581,11 +1581,6 @@ func (s *Spammer) cleanupOwnership() {
 		s.accountReceiver.ResetBasicOutputs()
 	}
 
-	// If there is a transition loop there is no need to keep them under the sender control
-	if s.valueLoopTransitionAlias {
-		s.accountSender.ResetAliasOutputs()
-	}
-
 	if !s.valueSpamCreateAlias {
 		// sender's alias outputs are never used => cleanup
 		s.accountSender.ResetAliasOutputs()
