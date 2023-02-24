@@ -1281,7 +1281,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputAlias:
-			s.LogDebug("It is an Alias Output!!!!")
+			s.LogDebug("It is an Alias Output!!!! %s", input.OutputID().ToHex())
 			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.AliasOutput)
 
@@ -1331,6 +1331,8 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			InputID:      input.OutputID(),
 			Input:        input.Output(),
 		})
+
+		s.LogDebugf("Input added!!!", input.OutputID().ToHex())
 		consumedInputIDs = append(consumedInputIDs, input.OutputID())
 	}
 
@@ -1345,6 +1347,8 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	if err := setMinimumBalanceOfOutput(protocolParams, basicOuputRemainder); err != nil {
 		return nil, nil, err
 	}
+
+	s.LogDebugf("Spam Builder Length of Created Outputs: %d", len(spamBuilder.createdOutputs))
 
 	// add all outputs and calculate the remainder
 	var remainderOutputIndex uint16
@@ -1384,6 +1388,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 		}
 
 		txBuilder.AddOutput(output)
+		s.LogDebugf("Added Output to TX Builder")
 		remainderOutputIndex++
 	}
 
@@ -1399,10 +1404,12 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	// add the remainder output if it is needed
 	if basicOuputRemainder != nil {
 		txBuilder.AddOutput(basicOuputRemainder)
+		s.LogDebugf("Added Output to TX Builder Remainder")
 	}
 
 	// build the transaction payload
 	txPayload, err := txBuilder.Build(protocolParams, spamBuilder.accountSender.Signer())
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("build tx payload failed, error: %w", err)
 	}
