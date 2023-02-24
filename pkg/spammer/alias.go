@@ -118,7 +118,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 	
 	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
 		// If the Alias it is not the one we have selected before we return consume false
-		if (aliasOutputToConsume != nil && aliasInput.outputID.ToHex() == aliasOutputToConsume.outputID.ToHex()) {
+		if (aliasOutputToConsume != nil && aliasInput.outputID.ToHex() != aliasOutputToConsume.outputID.ToHex()) {
 			return false, false
 		}
 
