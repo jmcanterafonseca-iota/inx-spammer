@@ -105,7 +105,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
-	var aliasOutputToConsume []*AliasUTXO = accountSender.AliasOutputs()
+	var aliasOutputToConsume *AliasUTXO = nil
 
 	s.LogDebugf("State Transition: Account Sender Alias Output Length %d", len(accountSender.AliasOutputs()))
 
@@ -113,13 +113,15 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		// Only one is taken to transition
 		randomInt := rand.Int63n(int64(len(accountSender.AliasOutputs())))
 		s.LogDebugf("Alias # to transition: %d", randomInt)
-		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt:randomInt + 1]
-		s.LogDebugf("Len of the Alias Array: %d", len(aliasOutputToConsume))
+		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt]
 	}
-
-	s.LogDebugf("State Transition: Account Sender Alias Output Length (After) %d", len(accountSender.AliasOutputs()))
 	
-	_, remainingAliasInputs := consumeInputs(aliasOutputToConsume, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
+	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
+		// If the Alias it is not the one we have selected before we return consume false
+		if (aliasOutputToConsume != nil && aliasInput.outputID.ToHex() == aliasOutputToConsume.outputID.ToHex()) {
+			return false, false
+		}
+
 		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
 		if !ok {
 			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
