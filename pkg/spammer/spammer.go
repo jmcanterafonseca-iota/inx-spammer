@@ -408,7 +408,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 		case stateAliasOutputCreate:
 			if s.valueSpamCreateAlias {
 				s.LogDebugf("On Create Total Alias To Create: %d", s.valueLoopTotalAliasNumber)
-				s.LogDebugf("On Create Total Alias Available: %d", len(s.accountSender.AliasOutputs()))
+				s.LogDebugf("On Create Total Alias Owned by the Account Sender: %d", len(s.accountSender.AliasOutputs()))
 				s.LogDebugf("On Create Loop: %t", s.valueLoopTransitionAlias)
 				
 				if !s.valueLoopTransitionAlias || len(s.accountSender.AliasOutputs()) < int(s.valueLoopTotalAliasNumber) {

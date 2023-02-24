@@ -173,11 +173,14 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 	}
 
 	accountSender.SetAliasOutputs(remainingAliasInputs)
+	s.LogDebugf("Number of Alias Outputs before booking and after transition: %d", len(accountSender.AliasOutputs()))
+
 	if err := s.bookCreatedOutputs(createdOutputs, nil, accountSender, nil); err != nil {
 		panic(err)
 	}
 
 	s.LogDebugf("Booked Created Outputs Num: %d", len(createdOutputs))
+	s.LogDebugf("Number of Alias Outputs after booking and after transition: %d", len(accountSender.AliasOutputs()))
 
 	return nil
 }
