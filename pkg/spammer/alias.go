@@ -132,7 +132,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
 		aliasOutput.StateIndex = transitionedAliasOutput.StateIndex
-		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID(), aliasOutput.StateIndex)
+		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID().ToHex(), aliasOutput.StateIndex)
 
 		transitionedAliasOutput.StateMetadata = buf
 		if transitionedAliasOutput.AliasID.Empty() {
