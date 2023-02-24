@@ -411,7 +411,7 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 				s.LogDebugf("On Create Total Alias Owned by the Account Sender: %d", len(s.accountSender.AliasOutputs()))
 				s.LogDebugf("On Create Loop: %t", s.valueLoopTransitionAlias)
 				
-				if !s.valueLoopTransitionAlias || len(s.accountSender.AliasOutputs()) < int(s.valueLoopTotalAliasNumber) {
+				if !s.valueLoopTransitionAlias || uint64(len(s.accountSender.AliasOutputs())) < s.valueLoopTotalAliasNumber {
 					s.LogDebugf("Number of Alias Outputs before creating: %d", len(s.accountSender.AliasOutputs()))
 					if err := s.aliasOutputCreate(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
 						logDebugStateErrorFunc(s.outputState, err)
@@ -424,9 +424,13 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 
 		case stateAliasOutputStateTransition:
 			if s.valueSpamCreateAlias {
-				if err := s.aliasOutputStateTransition(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
-					logDebugStateErrorFunc(s.outputState, err)
-					return nil
+				// Only perform if we are not in a loop or in a loop but with the initial set created
+				if !s.valueLoopTransitionAlias ||
+					(s.valueLoopTransitionAlias && uint64(len(s.accountSender.AliasOutputs())) >= s.valueLoopTotalAliasNumber) {
+					if err := s.aliasOutputStateTransition(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
+						logDebugStateErrorFunc(s.outputState, err)
+						return nil
+					}
 				}
 				executed = true
 			}
