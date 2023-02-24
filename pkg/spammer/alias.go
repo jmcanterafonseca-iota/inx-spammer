@@ -112,6 +112,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		randomInt := rand.Int63n(int64(len(accountSender.AliasOutputs())))
 		s.LogDebugf("Alias # to transition: %d", randomInt)
 		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt:randomInt + 1]
+		s.LogDebugf("Len of the Alias Array: %d", len(aliasOutputToConsume))
 	}
 	
 	_, remainingAliasInputs := consumeInputs(aliasOutputToConsume, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
@@ -131,6 +132,8 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
 		aliasOutput.StateIndex = transitionedAliasOutput.StateIndex
+		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID(), aliasOutput.StateIndex)
+
 		transitionedAliasOutput.StateMetadata = buf
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())
