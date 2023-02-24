@@ -1256,6 +1256,8 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 	// add all inputs
 	var remainder int64
 	consumedInputIDs := iotago.OutputIDs{}
+	s.LogDebugf("Consumed Inputs Length: %d", len(spamBuilder.consumedInputs))
+	
 	for _, input := range spamBuilder.consumedInputs {
 		remainder += int64(input.Output().Deposit())
 
