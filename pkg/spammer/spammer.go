@@ -1332,7 +1332,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			Input:        input.Output(),
 		})
 
-		s.LogDebugf("Input added!!!", input.OutputID().ToHex())
+		s.LogDebugf("Input added!!! %s", input.OutputID().ToHex())
 		consumedInputIDs = append(consumedInputIDs, input.OutputID())
 	}
 

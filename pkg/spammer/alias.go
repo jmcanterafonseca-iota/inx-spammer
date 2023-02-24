@@ -107,6 +107,8 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 
 	var aliasOutputToConsume []*AliasUTXO = accountSender.AliasOutputs()
 
+	s.LogDebugf("State Transition: Account Sender Alias Output Length %d", len(accountSender.AliasOutputs()))
+
 	if s.valueLoopTransitionAlias {
 		// Only one is taken to transition
 		randomInt := rand.Int63n(int64(len(accountSender.AliasOutputs())))
@@ -114,6 +116,8 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt:randomInt + 1]
 		s.LogDebugf("Len of the Alias Array: %d", len(aliasOutputToConsume))
 	}
+
+	s.LogDebugf("State Transition: Account Sender Alias Output Length (After) %d", len(accountSender.AliasOutputs()))
 	
 	_, remainingAliasInputs := consumeInputs(aliasOutputToConsume, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
 		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
