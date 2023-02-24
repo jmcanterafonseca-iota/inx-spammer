@@ -131,7 +131,6 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
-		aliasOutput.StateIndex = transitionedAliasOutput.StateIndex
 		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID().ToHex(), aliasOutput.StateIndex)
 
 		transitionedAliasOutput.StateMetadata = buf

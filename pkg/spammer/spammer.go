@@ -1281,7 +1281,7 @@ func (s *Spammer) BuildTransactionPayloadBlockAndSend(ctx context.Context, spamB
 			unlockAddress = addrUnlockCondition.Address
 
 		case iotago.OutputAlias:
-			s.LogDebug("It is an Alias Output!!!! %s", input.OutputID().ToHex())
+			s.LogDebugf("It is an Alias Output!!!! %s", input.OutputID().ToHex())
 			//nolint:forcetypeassert // we already checked the type
 			o := input.Output().(*iotago.AliasOutput)
 
