@@ -137,7 +137,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
-		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID().ToHex(), aliasOutput.StateIndex)
+		s.LogDebugf("Next State Index of Output: %s is: %d", aliasInput.OutputID().ToHex(), transitionedAliasOutput.StateIndex)
 
 		transitionedAliasOutput.StateMetadata = buf
 		if transitionedAliasOutput.AliasID.Empty() {
@@ -176,6 +176,8 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 	if err := s.bookCreatedOutputs(createdOutputs, nil, accountSender, nil); err != nil {
 		panic(err)
 	}
+
+	s.LogDebugf("Booked Created Outputs Num: %d", len(createdOutputs))
 
 	return nil
 }
