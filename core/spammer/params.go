@@ -27,18 +27,20 @@ type ParametersSpammer struct {
 
 	ValueSpam struct {
 		// whether to spam with transaction payloads instead of data payloads
-		Enabled            bool `default:"false" usage:"whether to spam with transaction payloads instead of data payloads"`
-		SendBasicOutput    bool `default:"true" usage:"whether to send basic outputs"`
-		CollectBasicOutput bool `default:"true" usage:"whether to collect basic outputs"`
-		CreateAlias        bool `default:"true" usage:"whether to create aliases"`
-		DestroyAlias       bool `default:"true" usage:"whether to destroy aliases"`
-		CreateFoundry      bool `default:"true" usage:"whether to create foundries"`
-		DestroyFoundry     bool `default:"true" usage:"whether to destroy foundries"`
-		MintNativeToken    bool `default:"true" usage:"whether to mint native tokens"`
-		MeltNativeToken    bool `default:"true" usage:"whether to melt native tokens"`
-		CreateNFT          bool `default:"true" usage:"whether to create NFTs"`
-		DestroyNFT         bool `default:"true" usage:"whether to destroy NFTs"`
-		AliasPayloadSize   int  `default:0      usage:"Payload size of the state metadata of aliases"`
+		Enabled              bool   `default:"false" usage:"whether to spam with transaction payloads instead of data payloads"`
+		SendBasicOutput      bool   `default:"true" usage:"whether to send basic outputs"`
+		CollectBasicOutput   bool   `default:"true" usage:"whether to collect basic outputs"`
+		CreateAlias          bool   `default:"true" usage:"whether to create aliases"`
+		DestroyAlias         bool   `default:"true" usage:"whether to destroy aliases"`
+		CreateFoundry        bool   `default:"true" usage:"whether to create foundries"`
+		DestroyFoundry       bool   `default:"true" usage:"whether to destroy foundries"`
+		MintNativeToken      bool   `default:"true" usage:"whether to mint native tokens"`
+		MeltNativeToken      bool   `default:"true" usage:"whether to melt native tokens"`
+		CreateNFT            bool   `default:"true" usage:"whether to create NFTs"`
+		DestroyNFT           bool   `default:"true" usage:"whether to destroy NFTs"`
+		AliasPayloadSize     int    `default:0      usage:"Payload size of the state metadata of aliases"`
+		LoopTransitionAlias  bool   `default:false usage:"whether to loop transition over aliases"`
+		LoopTotalAliasNumber uint64 `default:1 usage:"the total number of aliases involved in a loop"`
 	}
 
 	Tipselection struct {

@@ -163,6 +163,8 @@ func provide(c *dig.Container) error {
 			ParamsSpammer.ValueSpam.CreateNFT,
 			ParamsSpammer.ValueSpam.DestroyNFT,
 			ParamsSpammer.ValueSpam.AliasPayloadSize,
+			ParamsSpammer.ValueSpam.LoopTransitionAlias,
+			ParamsSpammer.ValueSpam.LoopTotalAliasNumber,
 			ParamsSpammer.Tipselection.NonLazyTipsThreshold,
 			ParamsSpammer.Tipselection.SemiLazyTipsThreshold,
 			ParamsPoW.RefreshTipsInterval,

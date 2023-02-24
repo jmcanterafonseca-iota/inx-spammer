@@ -105,7 +105,16 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 
 	spamBuilder := NewSpamBuilder(accountSender, additionalTag...)
 
-	_, remainingAliasInputs := consumeInputs(accountSender.AliasOutputs(), func(aliasInput *AliasUTXO) (consume bool, abort bool) {
+	var aliasOutputToConsume []*AliasUTXO = accountSender.AliasOutputs()
+
+	if s.valueLoopTransitionAlias {
+		// Only one is taken to transition
+		randomInt := rand.Int63n(int64(len(accountSender.AliasOutputs())))
+		s.LogDebugf("Alias # to transition: %", randomInt)
+		aliasOutputToConsume = accountSender.AliasOutputs()[randomInt:randomInt + 1]
+	}
+	
+	_, remainingAliasInputs := consumeInputs(aliasOutputToConsume, func(aliasInput *AliasUTXO) (consume bool, abort bool) {
 		aliasOutput, ok := aliasInput.Output().(*iotago.AliasOutput)
 		if !ok {
 			panic(fmt.Sprintf("invalid type: expected *iotago.AliasOutput, got %T", aliasInput.Output()))
@@ -121,6 +130,7 @@ func (s *Spammer) aliasOutputStateTransition(ctx context.Context, accountSender 
 		//nolint:forcetypeassert // we already checked the type
 		transitionedAliasOutput := aliasOutput.Clone().(*iotago.AliasOutput)
 		transitionedAliasOutput.StateIndex++
+		aliasOutput.StateIndex = transitionedAliasOutput.StateIndex
 		transitionedAliasOutput.StateMetadata = buf
 		if transitionedAliasOutput.AliasID.Empty() {
 			transitionedAliasOutput.AliasID = iotago.AliasIDFromOutputID(aliasInput.OutputID())

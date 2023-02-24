@@ -156,6 +156,8 @@ type Spammer struct {
 	valueSpamCreateNFT          bool
 	valueSpamDestroyNFT         bool
 	valueAliasPayloadSize       int
+	valueLoopTransitionAlias    bool
+	valueLoopTotalAliasNumber   uint64
 	nonLazyTipsThreshold        uint32
 	semiLazyTipsThreshold       uint32
 	refreshTipsInterval         time.Duration
@@ -220,6 +222,8 @@ func New(
 	valueSpamCreateNFT bool,
 	valueSpamDestroyNFT bool,
 	valueAliasPayloadSize int,
+	valueLoopTransitionAlias bool,
+	valueLoopTotalAliasNumber uint64,
 	nonLazyTipsThreshold uint32,
 	semiLazyTipsThreshold uint32,
 	refreshTipsInterval time.Duration,
@@ -401,11 +405,14 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 
 		case stateAliasOutputCreate:
 			if s.valueSpamCreateAlias {
-				if err := s.aliasOutputCreate(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
-					logDebugStateErrorFunc(s.outputState, err)
-					return nil
+				if !(s.valueLoopTransitionAlias && uint64(len(s.accountSender.AliasOutputs())) < s.valueLoopTotalAliasNumber) {
+					s.LogDebugf("Number of Alias Outputs before creating: %", len(s.accountSender.AliasOutputs()))
+					if err := s.aliasOutputCreate(ctx, s.accountSender, s.valueAliasPayloadSize, outputStateNamesMap[s.outputState]); err != nil {
+						logDebugStateErrorFunc(s.outputState, err)
+						return nil
+					}
+					executed = true
 				}
-				executed = true
 			}
 			s.outputState = stateAliasOutputStateTransition
 
@@ -450,7 +457,8 @@ func (s *Spammer) doSpam(ctx context.Context, currentProcessID uint32) error {
 			s.outputState = stateAliasOutputGovernanceTransition
 
 		case stateAliasOutputGovernanceTransition:
-			if s.valueSpamCreateAlias {
+			// The Governor change is not done if there is loop transition
+			if s.valueSpamCreateAlias && !s.valueLoopTransitionAlias {
 				if err := s.aliasOutputGovernanceTransition(ctx, s.accountSender, s.accountReceiver, outputStateNamesMap[s.outputState]); err != nil {
 					logDebugStateErrorFunc(s.outputState, err)
 					return nil
@@ -1555,6 +1563,11 @@ func (s *Spammer) cleanupOwnership() {
 	if !s.valueSpamCollectBasicOutput {
 		// receiver's basic outputs are never used => cleanup
 		s.accountReceiver.ResetBasicOutputs()
+	}
+
+	// If there is a transition loop there is no need to keep them under the sender control
+	if s.valueLoopTransitionAlias {
+		s.accountSender.ResetAliasOutputs()
 	}
 
 	if !s.valueSpamCreateAlias {

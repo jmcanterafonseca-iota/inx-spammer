@@ -47,6 +47,8 @@
       "collectBasicOutput": true,
       "createAlias": true,
       "destroyAlias": true,
+      "loopTransitionAlias": false,
+      "loopTotalAliasNumber": 1,
       "createFoundry": true,
       "destroyFoundry": true,
       "mintNativeToken": true,
